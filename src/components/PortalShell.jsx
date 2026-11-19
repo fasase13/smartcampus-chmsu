@@ -14,6 +14,7 @@ import {
   Home,
   FilePlus2,
   QrCode,
+  ShieldCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLE_LABELS, ROLES } from "@/lib/constants";
@@ -33,6 +34,12 @@ export default function PortalShell({
   const campusName = campus?.name ?? profile?.campuses?.name ?? "CHMSU";
 
   const navItems = [
+    {
+      href: "/management",
+      label: "Management & Admin",
+      icon: ShieldCheck,
+      visible: [ROLES.ADMIN, ROLES.MANAGEMENT].includes(profile?.role),
+    },
     {
       href: `/${campusSlug}/rmo`,
       label: "RMO Intake & Registry",
