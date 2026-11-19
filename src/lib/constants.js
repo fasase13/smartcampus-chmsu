@@ -72,7 +72,7 @@ export const PORTAL_ROLE_ACCESS = {
     ROLES.ADMIN,
     ROLES.MANAGEMENT,
   ],
-  student: [ROLES.STUDENT, ROLES.ADMIN],
+  student: [ROLES.STUDENT, ROLES.ADMIN, ROLES.MANAGEMENT],
   rmo: [ROLES.RMO, ROLES.ADMIN],
   office: [ROLES.DEPT_HEAD, ROLES.ADMIN],
 };
@@ -148,6 +148,52 @@ export const ANNOUNCEMENT_PRIORITIES = [
   { value: "high", label: "High", badgeClass: "bg-amber-100 text-amber-900 border-amber-300" },
   { value: "urgent", label: "Urgent", badgeClass: "bg-red-100 text-red-800 border-red-300" },
 ];
+
+export const DOCUMENT_STATUS_META = {
+  registered: {
+    label: "Registered",
+    badgeClass: "bg-slate-100 text-slate-800 border-slate-200",
+  },
+  in_transit: {
+    label: "In Transit",
+    badgeClass: "bg-amber-100 text-amber-900 border-amber-300",
+  },
+  received: {
+    label: "Received",
+    badgeClass: "bg-sky-100 text-sky-900 border-sky-200",
+  },
+  in_review: {
+    label: "In Review",
+    badgeClass: "bg-indigo-100 text-indigo-900 border-indigo-200",
+  },
+  action_required: {
+    label: "Action Required",
+    badgeClass: "bg-orange-100 text-orange-900 border-orange-300",
+  },
+  completed: {
+    label: "Completed / Released",
+    badgeClass: "bg-emerald-100 text-emerald-900 border-emerald-300",
+  },
+  archived: {
+    label: "Archived",
+    badgeClass: "bg-slate-200 text-slate-700 border-slate-300",
+  },
+  delayed: {
+    label: "Delayed",
+    badgeClass: "bg-red-100 text-red-900 border-red-300",
+  },
+};
+
+export const ROUTE_ACTION_LABELS = {
+  registered: "Document Registered",
+  dispatched: "Dispatched / In Transit",
+  received: "Received at Office",
+  forwarded: "Forwarded to Next Office",
+  returned: "Returned for Revision",
+  completed: "Completed & Released",
+  archived: "Archived",
+  delay_flagged: "Delay Alert Flagged",
+};
 
 export const STORAGE_BUCKETS = {
   DOCUMENT_FILES: "document-files",
