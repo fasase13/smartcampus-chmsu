@@ -73,8 +73,15 @@ export const PORTAL_ROLE_ACCESS = {
     ROLES.MANAGEMENT,
   ],
   student: [ROLES.STUDENT, ROLES.ADMIN, ROLES.MANAGEMENT],
-  rmo: [ROLES.RMO, ROLES.ADMIN],
-  office: [ROLES.DEPT_HEAD, ROLES.ADMIN],
+  rmo: [ROLES.RMO, ROLES.ADMIN, ROLES.MANAGEMENT],
+  office: [
+    ROLES.DEPT_HEAD,
+    ROLES.RMO,
+    ROLES.FACULTY,
+    ROLES.STAFF,
+    ROLES.ADMIN,
+    ROLES.MANAGEMENT,
+  ],
 };
 
 export function getDefaultRouteForRole(role, campusSlug) {
@@ -194,6 +201,56 @@ export const ROUTE_ACTION_LABELS = {
   archived: "Archived",
   delay_flagged: "Delay Alert Flagged",
 };
+
+export const DOCUMENT_TYPES = [
+  "Special Order",
+  "CHED Memorandum",
+  "Office Order",
+  "Civil Service Memo",
+  "Administrative Order",
+  "Student Clearance",
+  "Leave Application",
+  "Academic Request",
+  "Other",
+];
+
+export const DOCUMENT_PRIORITIES = [
+  {
+    value: "routine",
+    label: "Routine",
+    badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+  },
+  {
+    value: "urgent",
+    label: "Urgent",
+    badgeClass: "bg-orange-100 text-orange-900 border-orange-300",
+  },
+  {
+    value: "confidential",
+    label: "Confidential",
+    badgeClass: "bg-purple-100 text-purple-900 border-purple-300",
+  },
+];
+
+export const SLA_PRESETS = [
+  { label: "24h (1 Day)", hours: 24 },
+  { label: "48h (2 Days)", hours: 48 },
+  { label: "72h (3 Days)", hours: 72 },
+  { label: "120h (5 Days)", hours: 120 },
+];
+
+export const MAX_DOCUMENT_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+
+export const ALLOWED_DOCUMENT_MIME_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
 
 export const STORAGE_BUCKETS = {
   DOCUMENT_FILES: "document-files",

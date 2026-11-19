@@ -42,4 +42,16 @@ body {
   body {
     background-color: #ffffff;
   }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .qr-slip-print-root {
+    position: static !important;
+    inset: auto !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
 }

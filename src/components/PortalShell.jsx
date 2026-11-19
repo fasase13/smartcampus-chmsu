@@ -12,6 +12,8 @@ import {
   Building2,
   UserCheck,
   Home,
+  FilePlus2,
+  QrCode,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLE_LABELS, ROLES } from "@/lib/constants";
@@ -31,6 +33,27 @@ export default function PortalShell({
   const campusName = campus?.name ?? profile?.campuses?.name ?? "CHMSU";
 
   const navItems = [
+    {
+      href: `/${campusSlug}/rmo`,
+      label: "RMO Intake & Registry",
+      icon: FilePlus2,
+      visible: [ROLES.RMO, ROLES.ADMIN, ROLES.MANAGEMENT].includes(
+        profile?.role
+      ),
+    },
+    {
+      href: `/${campusSlug}/office`,
+      label: "QR Scanner & Office Queue",
+      icon: QrCode,
+      visible: [
+        ROLES.DEPT_HEAD,
+        ROLES.RMO,
+        ROLES.FACULTY,
+        ROLES.STAFF,
+        ROLES.ADMIN,
+        ROLES.MANAGEMENT,
+      ].includes(profile?.role),
+    },
     {
       href: `/${campusSlug}/faculty`,
       label: "Announcements & Availability",
@@ -74,7 +97,7 @@ export default function PortalShell({
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas lg:flex-row">
       {/* Desktop Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-chmsu-forest/15 bg-chmsu-forest text-white lg:flex">
+      <aside className="no-print hidden w-64 shrink-0 flex-col border-r border-chmsu-forest/15 bg-chmsu-forest text-white lg:flex">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
             <img
@@ -151,7 +174,7 @@ export default function PortalShell({
       {/* Main Column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top Bar (Mobile + Desktop Context Header) */}
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
+        <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
             <button
               type="button"
