@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -20,6 +21,7 @@ import {
   CROSS_CAMPUS_ROLES,
   getDefaultRouteForRole,
 } from "@/lib/constants";
+import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
 
 const QUERY_ERROR_MESSAGES = {
   account_inactive:
@@ -190,9 +192,11 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
           >
             <div className="flex items-center gap-3.5">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white p-1">
-                <img
+                <Image
                   src="/images/chmsu-logo.jpg"
                   alt="CHMSU Seal"
+                  width={44}
+                  height={44}
                   className="h-full w-full rounded-full object-contain"
                 />
               </div>
@@ -314,10 +318,13 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
               )}
             </button>
 
-            <p className="pt-2 text-center text-xs text-slate-500">
-              Your role and campus assignment are verified automatically upon
-              sign-in.
-            </p>
+            <div className="flex flex-col items-center gap-2 pt-2 text-center text-xs text-slate-500">
+              <p>
+                Your role and campus assignment are verified automatically upon
+                sign-in.
+              </p>
+              <PrivacyNoticeModal />
+            </div>
           </form>
         </div>
       </main>

@@ -107,11 +107,22 @@ export default function RmoPortalClient({
 
   // Feedback
   const [feedback, setFeedback] = useState(null);
+  const [nowMs, setNowMs] = useState(0);
+
+  useEffect(() => {
+    const initialTick = setTimeout(() => setNowMs(Date.now()), 0);
+    const timer = setInterval(() => setNowMs(Date.now()), 60000);
+    return () => {
+      clearTimeout(initialTick);
+      clearInterval(timer);
+    };
+  }, []);
 
   const computedDueAt = useMemo(() => {
+    if (!nowMs) return null;
     const hours = Number(slaHours) || 48;
-    return new Date(Date.now() + hours * 3600 * 1000);
-  }, [slaHours]);
+    return new Date(nowMs + hours * 3600 * 1000);
+  }, [slaHours, nowMs]);
 
   // Filter recipient dropdown to destination campus staff (plus cross-campus)
   const destinationStaff = useMemo(() => {
@@ -731,7 +742,8 @@ export default function RmoPortalClient({
                 htmlFor="rmo_sla"
                 className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
               >
-                SLA Target (Hours) &mdash; Due {formatDateTime(computedDueAt.toISOString())}
+                SLA Target (Hours) &mdash; Due{" "}
+                {computedDueAt ? formatDateTime(computedDueAt.toISOString()) : "—"}
               </label>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {SLA_PRESETS.map((preset) => (

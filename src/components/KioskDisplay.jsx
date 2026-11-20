@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -232,9 +233,12 @@ export default function KioskDisplay({
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-white p-1 shadow-sm">
-              <img
+              <Image
                 src="/images/chmsu-logo.jpg"
                 alt="Carlos Hilado Memorial State University Seal"
+                width={52}
+                height={52}
+                priority
                 className="h-full w-full rounded-full object-contain"
               />
             </div>

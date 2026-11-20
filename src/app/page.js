@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
   Building2,
@@ -28,9 +29,12 @@ export default async function CampusGatewayPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3.5">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white p-1 shadow-sm">
-              <img
+              <Image
                 src="/images/chmsu-logo.jpg"
                 alt="Carlos Hilado Memorial State University Seal"
+                width={44}
+                height={44}
+                priority
                 className="h-full w-full rounded-full object-contain"
               />
             </div>
@@ -164,16 +168,34 @@ export default async function CampusGatewayPage() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-chmsu-border bg-white py-4">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 text-xs text-slate-500 sm:flex-row sm:px-6">
-          <p>
-            &copy; {new Date().getFullYear()} Carlos Hilado Memorial State
-            University &mdash; SmartCampus System
-          </p>
-          <p>
-            Public Kiosks comply with RA 10173 (Data Privacy Act of 2012)
-          </p>
+      {/* System Status & Campus Info Footer */}
+      <footer className="border-t border-chmsu-border bg-white py-5">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 font-semibold text-emerald-800">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              System Online &bull; {campuses?.length ?? 0}/4 Campuses Active
+            </span>
+            <span>
+              &copy; {new Date().getFullYear()} Carlos Hilado Memorial State
+              University
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <Link
+              href="/privacy"
+              className="font-semibold text-chmsu-navy transition hover:text-chmsu-green"
+            >
+              RA 10173 Data Privacy Notice
+            </Link>
+            <Link
+              href="/login/management"
+              className="font-semibold text-chmsu-forest transition hover:text-chmsu-green"
+            >
+              Management &amp; Admin
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

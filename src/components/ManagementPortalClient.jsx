@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -129,6 +130,16 @@ export default function ManagementPortalClient({
 
   // Feedback Banner
   const [feedback, setFeedback] = useState(null);
+  const [nowMs, setNowMs] = useState(0);
+
+  useEffect(() => {
+    const initialTick = setTimeout(() => setNowMs(Date.now()), 0);
+    const timer = setInterval(() => setNowMs(Date.now()), 60000);
+    return () => {
+      clearTimeout(initialTick);
+      clearInterval(timer);
+    };
+  }, []);
 
   // Inspect Document Trail Modal
   const [inspectDoc, setInspectDoc] = useState(null);
@@ -301,13 +312,12 @@ export default function ManagementPortalClient({
   // Date-filtered documents for Tab B analytics & reports
   const reportScopedDocs = useMemo(() => {
     if (datePreset === "all") return campusScopedDocs;
-    const now = Date.now();
     let startMs = 0;
     let endMs = Infinity;
 
-    if (datePreset === "7d") startMs = now - 7 * 86400000;
-    else if (datePreset === "30d") startMs = now - 30 * 86400000;
-    else if (datePreset === "90d") startMs = now - 90 * 86400000;
+    if (datePreset === "7d") startMs = nowMs ? nowMs - 7 * 86400000 : 0;
+    else if (datePreset === "30d") startMs = nowMs ? nowMs - 30 * 86400000 : 0;
+    else if (datePreset === "90d") startMs = nowMs ? nowMs - 90 * 86400000 : 0;
     else if (datePreset === "custom") {
       startMs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : 0;
       endMs = dateTo ? new Date(`${dateTo}T23:59:59`).getTime() : Infinity;
@@ -317,7 +327,7 @@ export default function ManagementPortalClient({
       const t = new Date(d.created_at).getTime();
       return t >= startMs && t <= endMs;
     });
-  }, [campusScopedDocs, datePreset, dateFrom, dateTo]);
+  }, [campusScopedDocs, datePreset, dateFrom, dateTo, nowMs]);
 
   // KPI Metrics (Tab A)
   const kpis = useMemo(() => {
@@ -411,7 +421,7 @@ export default function ManagementPortalClient({
       if (isDocOverdue(doc)) existing.overdue += 1;
       const endMs = doc.completed_at
         ? new Date(doc.completed_at).getTime()
-        : Date.now();
+        : nowMs || new Date(doc.updated_at || doc.created_at).getTime();
       existing.holdingHoursSum += Math.max(
         0,
         (endMs - new Date(doc.created_at).getTime()) / 3600000
@@ -432,7 +442,7 @@ export default function ManagementPortalClient({
           b.overdue - a.overdue || b.avgHoldingHours - a.avgHoldingHours
       )
       .slice(0, 8);
-  }, [campusMap, reportScopedDocs]);
+  }, [campusMap, reportScopedDocs, nowMs]);
 
   const breakdownByType = useMemo(() => {
     const counts = new Map();
@@ -769,9 +779,11 @@ export default function ManagementPortalClient({
       <aside className="no-print flex w-full shrink-0 flex-col border-b border-chmsu-navy/20 bg-chmsu-navy text-white lg:w-64 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
-            <img
+            <Image
               src="/images/chmsu-logo.jpg"
               alt="CHMSU Seal"
+              width={38}
+              height={38}
               className="h-full w-full rounded-full object-contain"
             />
           </div>
@@ -928,9 +940,11 @@ export default function ManagementPortalClient({
           <div className="hidden border-b-2 border-chmsu-forest pb-4 print:block">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img
+                <Image
                   src="/images/chmsu-logo.jpg"
                   alt="CHMSU Seal"
+                  width={56}
+                  height={56}
                   className="h-14 w-14 rounded-full object-contain"
                 />
                 <div>

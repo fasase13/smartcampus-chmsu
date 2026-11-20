@@ -1,6 +1,7 @@
 "use client";
 
 import { QRCodeSVG } from "qrcode.react";
+import Image from "next/image";
 import { Printer, X, Copy, Check } from "lucide-react";
 import { useState } from "react";
 
@@ -94,9 +95,11 @@ export default function QrSlipModal({ doc, campusMap, onClose }) {
           {/* Header with CHMSU Seal */}
           <div className="flex items-center justify-between gap-3 border-b-2 border-chmsu-forest pb-4">
             <div className="flex items-center gap-3">
-              <img
+              <Image
                 src="/images/chmsu-logo.jpg"
                 alt="CHMSU Seal"
+                width={48}
+                height={48}
                 className="h-12 w-12 rounded-full object-contain"
               />
               <div>

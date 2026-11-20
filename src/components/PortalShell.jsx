@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -107,9 +108,11 @@ export default function PortalShell({
       <aside className="no-print hidden w-64 shrink-0 flex-col border-r border-chmsu-forest/15 bg-chmsu-forest text-white lg:flex">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
-            <img
+            <Image
               src="/images/chmsu-logo.jpg"
               alt="CHMSU Seal"
+              width={38}
+              height={38}
               className="h-full w-full rounded-full object-contain"
             />
           </div>
@@ -196,9 +199,11 @@ export default function PortalShell({
               )}
             </button>
             <div className="flex items-center gap-2.5 lg:hidden">
-              <img
+              <Image
                 src="/images/chmsu-logo.jpg"
                 alt="CHMSU Seal"
+                width={32}
+                height={32}
                 className="h-8 w-8 rounded-full object-contain"
               />
               <div>
@@ -209,11 +214,19 @@ export default function PortalShell({
               </div>
             </div>
             <div className="hidden items-center gap-2 lg:flex">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-chmsu-green/25 bg-chmsu-green/10 px-3 py-1 text-xs font-semibold text-chmsu-forest">
-                <Building2 className="h-3.5 w-3.5 text-chmsu-green" />
-                CHMSU {campusName}
-              </span>
-              <span className="inline-flex items-center rounded-full border border-chmsu-navy/20 bg-chmsu-navy/10 px-3 py-1 text-xs font-semibold text-chmsu-navy">
+              <nav
+                aria-label="Breadcrumb"
+                className="flex items-center gap-1.5 text-xs font-medium text-slate-500"
+              >
+                <Link href="/" className="hover:text-chmsu-forest">
+                  Gateway
+                </Link>
+                <span>/</span>
+                <span className="font-semibold text-chmsu-forest">
+                  CHMSU {campusName}
+                </span>
+              </nav>
+              <span className="inline-flex items-center rounded-full border border-chmsu-navy/20 bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
                 {roleLabel}
               </span>
             </div>

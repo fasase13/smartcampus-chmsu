@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -32,6 +33,7 @@ import {
   ROUTE_ACTION_LABELS,
   getAvailabilityMeta,
 } from "@/lib/constants";
+import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
 
 const NEWS_CATEGORIES = [
   { value: "all", label: "All" },
@@ -343,9 +345,11 @@ export default function StudentPortalClient({
       <aside className="hidden w-64 shrink-0 flex-col border-r border-chmsu-forest/15 bg-chmsu-forest text-white md:flex">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
-            <img
+            <Image
               src="/images/chmsu-logo.jpg"
               alt="CHMSU Seal"
+              width={38}
+              height={38}
               className="h-full w-full rounded-full object-contain"
             />
           </div>
@@ -432,9 +436,11 @@ export default function StudentPortalClient({
         <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <img
+              <Image
                 src="/images/chmsu-logo.jpg"
                 alt="CHMSU Seal"
+                width={36}
+                height={36}
                 className="h-9 w-9 shrink-0 rounded-full object-contain md:hidden"
               />
               <div className="min-w-0">
@@ -458,6 +464,9 @@ export default function StudentPortalClient({
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
+              <div className="hidden sm:block">
+                <PrivacyNoticeModal compact />
+              </div>
               <span className="hidden rounded-full border border-chmsu-green/25 bg-chmsu-green/10 px-3 py-1 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                 {campus.code}
               </span>
