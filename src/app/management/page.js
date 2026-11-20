@@ -16,8 +16,12 @@ export default async function ManagementPortalPage() {
     redirect("/login/management?next=/management");
   }
 
-  if (!profile || !profile.is_active) {
+  if (!profile) {
     redirect("/login/management?error=account_inactive");
+  }
+
+  if (!profile.is_active || profile.approval_status !== "approved") {
+    redirect("/pending-approval");
   }
 
   // Strictly enforce admin & management access (defense-in-depth alongside proxy middleware)
@@ -49,7 +53,7 @@ export default async function ManagementPortalPage() {
         ? supabase
             .from("profiles")
             .select(
-              "id, campus_id, email, full_name, role, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+              "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, id_front_path, id_back_path, rejection_reason, reviewed_by, reviewed_at, department, job_title, office_location, show_on_kiosk, is_active, created_at"
             )
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] }),

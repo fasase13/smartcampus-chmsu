@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Building2,
+  CreditCard,
   Eye,
   EyeOff,
   Loader2,
@@ -15,13 +16,13 @@ import {
   Mail,
   Monitor,
   ShieldCheck,
+  UserPlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import {
-  CROSS_CAMPUS_ROLES,
-  getDefaultRouteForRole,
-} from "@/lib/constants";
+import { ROLES, getDefaultRouteForRole } from "@/lib/constants";
 import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
+
+const ID_NUMBER_REGEX = /^\d{8}$/;
 
 const QUERY_ERROR_MESSAGES = {
   account_inactive:
@@ -32,13 +33,19 @@ const QUERY_ERROR_MESSAGES = {
     "You do not have permission to access that portal section.",
 };
 
-export default function CampusLoginForm({ campus, isManagementLogin = false }) {
+export default function CampusLoginForm({
+  campus,
+  isManagementLogin = false,
+  isAdminLogin = false,
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryErrorCode = searchParams.get("error");
   const nextParam = searchParams.get("next");
 
-  const [email, setEmail] = useState("");
+  const [loginMode, setLoginMode] = useState(isAdminLogin ? "admin" : "id");
+  const [idNumber, setIdNumber] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -46,7 +53,81 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
     QUERY_ERROR_MESSAGES[queryErrorCode] ?? ""
   );
 
-  async function handleSubmit(e) {
+  const isAdminMode = loginMode === "admin";
+
+  function switchMode(nextMode) {
+    setLoginMode(nextMode);
+    setErrorMessage("");
+    setPassword("");
+  }
+
+  async function handleIdLoginSubmit(e) {
+    e.preventDefault();
+    setErrorMessage("");
+
+    const cleanId = idNumber.trim();
+    if (!ID_NUMBER_REGEX.test(cleanId)) {
+      setErrorMessage(
+        "Please enter a valid 8-digit CHMSU ID Number (e.g., 20230399)."
+      );
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/login-id", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          idNumber: cleanId,
+          password,
+          campusSlug: isManagementLogin ? "management" : campus?.slug ?? "",
+        }),
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok || !payload?.ok) {
+        setErrorMessage(payload?.error || "Invalid ID Number or password.");
+        return;
+      }
+
+      // Redirect pending, rejected, or inactive users to /pending-approval
+      if (payload.approval_status !== "approved" || !payload.is_active) {
+        router.push("/pending-approval");
+        router.refresh();
+        return;
+      }
+
+      if (isManagementLogin) {
+        const destination =
+          nextParam && nextParam.startsWith("/") && !nextParam.includes("//")
+            ? nextParam
+            : "/management";
+        router.push(destination);
+        router.refresh();
+        return;
+      }
+
+      const targetSlug = campus?.slug ?? payload.campus_slug ?? "talisay";
+      const defaultRoute = getDefaultRouteForRole(payload.role, targetSlug);
+      const isSafeNext =
+        nextParam &&
+        nextParam.startsWith(`/${targetSlug}/`) &&
+        !nextParam.includes("//");
+
+      router.push(isSafeNext ? nextParam : defaultRoute);
+      router.refresh();
+    } catch {
+      setErrorMessage(
+        "An unexpected error occurred while signing in. Please try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleAdminLoginSubmit(e) {
     e.preventDefault();
     setErrorMessage("");
     setSubmitting(true);
@@ -54,107 +135,67 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
     try {
       const supabase = createClient();
 
-      // 1. Authenticate with Supabase Auth
       const { data: authData, error: authError } =
         await supabase.auth.signInWithPassword({
-          email: email.trim(),
+          email: adminEmail.trim().toLowerCase(),
           password,
         });
 
       if (authError || !authData?.user) {
         setErrorMessage(
-          authError?.message || "Invalid email address or password."
+          authError?.message || "Invalid administrator email or password."
         );
         return;
       }
 
-      // 2. Fetch authoritative profile and assigned campus
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select(
-          "id, role, is_active, campus_id, full_name, campuses:campus_id(id, code, slug, name)"
-        )
+        .select("id, role, is_active, approval_status")
         .eq("id", authData.user.id)
         .single();
 
       if (profileError || !profile) {
         await supabase.auth.signOut();
         setErrorMessage(
-          "No active SmartCampus profile found for this account. Contact your campus ICT/Admin office."
+          "No active System Administrator profile found for this account."
         );
         return;
       }
 
-      if (!profile.is_active) {
+      // Strictly block non-admin accounts on System Administrator Login
+      if (profile.role !== ROLES.ADMIN) {
         await supabase.auth.signOut();
         setErrorMessage(
-          "This account has been deactivated. Please contact your campus administrator."
+          "Access denied. System Administrator Login is restricted to System Admin accounts only. Regular users must sign in with their 8-digit CHMSU ID Number."
         );
         return;
       }
 
-      const isCrossCampusRole = CROSS_CAMPUS_ROLES.includes(profile.role);
-
-      // 3. Validate Institutional Management / Admin login portal
-      if (isManagementLogin) {
-        if (!isCrossCampusRole) {
-          const assignedName = profile.campuses?.name ?? "your assigned campus";
-          await supabase.auth.signOut();
-          setErrorMessage(
-            `This portal is restricted to Institutional Management and System Administrators. Please sign in through the CHMSU ${assignedName} Campus Portal instead.`
-          );
-          return;
-        }
-
-        const destination =
-          nextParam && nextParam.startsWith("/") ? nextParam : "/management";
-        router.push(destination);
-        router.refresh();
-        return;
-      }
-
-      // 4. Validate strict campus isolation for campus-bound accounts
-      if (!isCrossCampusRole && profile.campus_id !== campus.id) {
-        const assignedCampusName =
-          profile.campuses?.name ?? "another CHMSU campus";
+      if (!profile.is_active || profile.approval_status !== "approved") {
         await supabase.auth.signOut();
         setErrorMessage(
-          `Access denied for CHMSU ${campus.name}. Your account is assigned to CHMSU ${assignedCampusName}. Please use the ${assignedCampusName} campus login portal.`
+          "This System Administrator account is inactive. Please contact ICT."
         );
         return;
       }
 
-      // 5. Log login event for non-student roles (best-effort, non-blocking)
-      if (profile.role !== "student") {
-        await supabase.from("audit_logs").insert({
-          campus_id: campus.id,
-          actor_id: profile.id,
-          actor_role: profile.role,
-          action: "auth.campus_login",
-          entity_type: "profile",
-          entity_id: profile.id,
-          metadata: {
-            campus_slug: campus.slug,
-            campus_name: campus.name,
-          },
-        });
-      }
-
-      // 6. Redirect automatically by role (or safe `next` param within same campus)
-      const defaultRoute = getDefaultRouteForRole(profile.role, campus.slug);
-      const isSafeNext =
-        nextParam &&
-        nextParam.startsWith(`/${campus.slug}/`) &&
-        !nextParam.includes("//");
-
-      router.push(isSafeNext ? nextParam : defaultRoute);
+      const destination =
+        nextParam && nextParam.startsWith("/") && !nextParam.includes("//")
+          ? nextParam
+          : "/management";
+      router.push(destination);
       router.refresh();
     } catch {
-      setErrorMessage("An unexpected error occurred while signing in. Please try again.");
+      setErrorMessage(
+        "An unexpected error occurred while signing in. Please try again."
+      );
     } finally {
       setSubmitting(false);
     }
   }
+
+  const headerBgClass =
+    isAdminMode || isManagementLogin ? "bg-chmsu-navy" : "bg-chmsu-forest";
 
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas">
@@ -169,7 +210,7 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
             All CHMSU Campuses
           </Link>
 
-          {!isManagementLogin && campus && (
+          {!isManagementLogin && !isAdminLogin && campus && (
             <Link
               href={`/${campus.slug}/kiosk`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border px-3 py-1.5 text-xs font-semibold text-chmsu-forest transition hover:border-chmsu-green hover:bg-chmsu-green/10"
@@ -185,11 +226,7 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
       <main className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-md overflow-hidden rounded-2xl border border-chmsu-border bg-chmsu-card shadow-xs">
           {/* Branded Card Header */}
-          <div
-            className={`px-6 py-6 text-white ${
-              isManagementLogin ? "bg-chmsu-navy" : "bg-chmsu-forest"
-            }`}
-          >
+          <div className={`px-6 py-6 text-white ${headerBgClass}`}>
             <div className="flex items-center gap-3.5">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white p-1">
                 <Image
@@ -205,32 +242,81 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
                   SmartCampus CHMSU
                 </p>
                 <h1 className="text-lg font-bold tracking-tight">
-                  {isManagementLogin
-                    ? "Institutional Management & Admin"
-                    : `CHMSU ${campus.name}`}
+                  {isAdminMode
+                    ? "System Administrator Login"
+                    : isManagementLogin
+                      ? "Institutional Management Portal"
+                      : `CHMSU ${campus?.name ?? "Campus"}`}
                 </h1>
               </div>
             </div>
 
             <div className="mt-4 flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/90">
-              {isManagementLogin ? (
+              {isAdminMode ? (
                 <>
                   <ShieldCheck className="h-4 w-4 shrink-0 text-chmsu-gold" />
-                  <span>Cross-campus executive &amp; system administration sign-in</span>
+                  <span>
+                    Restricted System Admin email sign-in (non-admin accounts
+                    blocked)
+                  </span>
+                </>
+              ) : isManagementLogin ? (
+                <>
+                  <ShieldCheck className="h-4 w-4 shrink-0 text-chmsu-gold" />
+                  <span>
+                    Sign in with your 8-digit CHMSU ID Number or switch to Admin
+                    Login
+                  </span>
                 </>
               ) : (
                 <>
                   <Building2 className="h-4 w-4 shrink-0 text-chmsu-gold" />
                   <span>
-                    Campus-isolated login ({campus.code}) &mdash; verified against your assigned campus
+                    Campus-isolated ID login ({campus?.code}) &mdash; verified
+                    against your assigned campus
                   </span>
                 </>
               )}
             </div>
           </div>
 
+          {/* Mode Toggle Bar (hidden only on dedicated /login/admin route) */}
+          {!isAdminLogin && (
+            <div className="grid grid-cols-2 border-b border-chmsu-border bg-chmsu-canvas p-1.5">
+              <button
+                type="button"
+                onClick={() => switchMode("id")}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition ${
+                  !isAdminMode
+                    ? "bg-white text-chmsu-forest shadow-xs"
+                    : "text-slate-600 hover:text-chmsu-forest"
+                }`}
+              >
+                <CreditCard className="h-3.5 w-3.5" />
+                ID Number Login
+              </button>
+              <button
+                type="button"
+                onClick={() => switchMode("admin")}
+                className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition ${
+                  isAdminMode
+                    ? "bg-white text-chmsu-navy shadow-xs"
+                    : "text-slate-600 hover:text-chmsu-navy"
+                }`}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                System Admin Login
+              </button>
+            </div>
+          )}
+
           {/* Form Body */}
-          <form onSubmit={handleSubmit} className="space-y-4 p-6">
+          <form
+            onSubmit={
+              isAdminMode ? handleAdminLoginSubmit : handleIdLoginSubmit
+            }
+            className="space-y-4 p-6"
+          >
             {errorMessage && (
               <div
                 role="alert"
@@ -241,27 +327,59 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
               </div>
             )}
 
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-semibold text-slate-700"
-              >
-                CHMSU Email Address
-              </label>
-              <div className="relative mt-1.5">
-                <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@chmsu.edu.ph"
-                  className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
-                />
+            {isAdminMode ? (
+              <div>
+                <label
+                  htmlFor="admin-email"
+                  className="block text-sm font-semibold text-slate-700"
+                >
+                  System Administrator Email
+                </label>
+                <div className="relative mt-1.5">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="admin-email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    placeholder="admin@chmsu.edu.ph"
+                    className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div>
+                <label
+                  htmlFor="id-number"
+                  className="block text-sm font-semibold text-slate-700"
+                >
+                  8-Digit CHMSU ID Number
+                </label>
+                <div className="relative mt-1.5">
+                  <CreditCard className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="id-number"
+                    type="text"
+                    required
+                    maxLength={8}
+                    inputMode="numeric"
+                    pattern="\d{8}"
+                    autoComplete="username"
+                    value={idNumber}
+                    onChange={(e) =>
+                      setIdNumber(e.target.value.replace(/\D/g, "").slice(0, 8))
+                    }
+                    placeholder="20230399"
+                    className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3.5 font-mono text-sm font-semibold tracking-widest text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Enter your 8-digit Student or Employee ID number only.
+                </p>
+              </div>
+            )}
 
             <div>
               <label
@@ -301,7 +419,7 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
               type="submit"
               disabled={submitting}
               className={`mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition disabled:opacity-60 ${
-                isManagementLogin
+                isAdminMode || isManagementLogin
                   ? "bg-chmsu-navy hover:bg-chmsu-forest"
                   : "bg-chmsu-forest hover:bg-chmsu-green"
               }`}
@@ -309,16 +427,44 @@ export default function CampusLoginForm({ campus, isManagementLogin = false }) {
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Verifying campus &amp; credentials...
+                  Verifying credentials...
                 </>
+              ) : isAdminMode ? (
+                "Sign In as System Administrator"
               ) : isManagementLogin ? (
                 "Sign In to Management Portal"
               ) : (
-                `Sign In to ${campus.name}`
+                `Sign In to ${campus?.name ?? "Campus"}`
               )}
             </button>
 
-            <div className="flex flex-col items-center gap-2 pt-2 text-center text-xs text-slate-500">
+            <div className="flex flex-col items-center gap-2.5 border-t border-chmsu-border pt-4 text-center text-xs text-slate-500">
+              {!isAdminMode && (
+                <div className="flex flex-wrap items-center justify-center gap-1.5 text-sm">
+                  <span className="text-slate-600">New to SmartCampus?</span>
+                  <Link
+                    href={
+                      !isManagementLogin && campus
+                        ? `/register/${campus.slug}`
+                        : "/register"
+                    }
+                    className="inline-flex items-center gap-1 font-semibold text-chmsu-forest transition hover:text-chmsu-green"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    Register Account
+                  </Link>
+                </div>
+              )}
+
+              {isAdminLogin && (
+                <Link
+                  href="/"
+                  className="font-semibold text-chmsu-forest transition hover:text-chmsu-green"
+                >
+                  Not a System Administrator? Return to Campus Portal Login
+                </Link>
+              )}
+
               <p>
                 Your role and campus assignment are verified automatically upon
                 sign-in.

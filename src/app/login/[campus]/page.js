@@ -8,10 +8,26 @@ export const dynamic = "force-dynamic";
 export default async function CampusLoginPage({ params }) {
   const { campus: campusSlug } = await params;
 
+  if (campusSlug === "admin") {
+    return (
+      <Suspense fallback={null}>
+        <CampusLoginForm
+          campus={null}
+          isManagementLogin={false}
+          isAdminLogin
+        />
+      </Suspense>
+    );
+  }
+
   if (campusSlug === "management") {
     return (
       <Suspense fallback={null}>
-        <CampusLoginForm campus={null} isManagementLogin />
+        <CampusLoginForm
+          campus={null}
+          isManagementLogin
+          isAdminLogin={false}
+        />
       </Suspense>
     );
   }
@@ -30,7 +46,11 @@ export default async function CampusLoginPage({ params }) {
 
   return (
     <Suspense fallback={null}>
-      <CampusLoginForm campus={campus} isManagementLogin={false} />
+      <CampusLoginForm
+        campus={campus}
+        isManagementLogin={false}
+        isAdminLogin={false}
+      />
     </Suspense>
   );
 }

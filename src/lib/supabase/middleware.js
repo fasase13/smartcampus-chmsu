@@ -50,8 +50,60 @@ export async function updateSession(request) {
   const { pathname, searchParams } = request.nextUrl;
   const segments = pathname.split("/").filter(Boolean);
 
-  // Public landing page & auth callback
-  if (segments.length === 0 || segments[0] === "auth") {
+  // Public landing page, privacy notice & auth callback
+  if (segments.length === 0 || segments[0] === "auth" || segments[0] === "privacy") {
+    return supabaseResponse;
+  }
+
+  // Self-registration routes: /register and /register/[campus]
+  if (segments[0] === "register") {
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, is_active, approval_status, campuses:campus_id(slug)")
+        .eq("id", user.id)
+        .single();
+
+      if (profile) {
+        const redirectUrl = request.nextUrl.clone();
+        if (!profile.is_active || profile.approval_status !== "approved") {
+          redirectUrl.pathname = "/pending-approval";
+          redirectUrl.search = "";
+          return redirectWithCookies(redirectUrl, supabaseResponse);
+        }
+
+        const assignedSlug = profile.campuses?.slug ?? "talisay";
+        redirectUrl.pathname = getDefaultRouteForRole(profile.role, assignedSlug);
+        redirectUrl.search = "";
+        return redirectWithCookies(redirectUrl, supabaseResponse);
+      }
+    }
+    return supabaseResponse;
+  }
+
+  // Pending / Declined registration verification screen
+  if (segments[0] === "pending-approval") {
+    if (!user) {
+      const homeUrl = request.nextUrl.clone();
+      homeUrl.pathname = "/";
+      homeUrl.search = "";
+      return redirectWithCookies(homeUrl, supabaseResponse);
+    }
+
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("role, is_active, approval_status, campuses:campus_id(slug)")
+      .eq("id", user.id)
+      .single();
+
+    if (profile?.is_active && profile?.approval_status === "approved") {
+      const assignedSlug = profile.campuses?.slug ?? "talisay";
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = getDefaultRouteForRole(profile.role, assignedSlug);
+      redirectUrl.search = "";
+      return redirectWithCookies(redirectUrl, supabaseResponse);
+    }
+
     return supabaseResponse;
   }
 
@@ -60,11 +112,18 @@ export async function updateSession(request) {
     if (user && !searchParams.get("error") && !searchParams.get("switch")) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role, is_active, campuses:campus_id(slug)")
+        .select("role, is_active, approval_status, campuses:campus_id(slug)")
         .eq("id", user.id)
         .single();
 
-      if (profile?.is_active) {
+      if (profile && (!profile.is_active || profile.approval_status !== "approved")) {
+        const pendingUrl = request.nextUrl.clone();
+        pendingUrl.pathname = "/pending-approval";
+        pendingUrl.search = "";
+        return redirectWithCookies(pendingUrl, supabaseResponse);
+      }
+
+      if (profile?.is_active && profile?.approval_status === "approved") {
         const assignedSlug = profile.campuses?.slug ?? "talisay";
         const requestedSlug = segments[1];
         const targetCampus =
@@ -93,15 +152,22 @@ export async function updateSession(request) {
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("role, is_active, campuses:campus_id(slug)")
+      .select("role, is_active, approval_status, campuses:campus_id(slug)")
       .eq("id", user.id)
       .single();
 
-    if (profileError || !profile || !profile.is_active) {
+    if (profileError || !profile) {
       const loginUrl = request.nextUrl.clone();
       loginUrl.pathname = "/login/management";
       loginUrl.search = "?error=account_inactive";
       return redirectWithCookies(loginUrl, supabaseResponse);
+    }
+
+    if (!profile.is_active || profile.approval_status !== "approved") {
+      const pendingUrl = request.nextUrl.clone();
+      pendingUrl.pathname = "/pending-approval";
+      pendingUrl.search = "";
+      return redirectWithCookies(pendingUrl, supabaseResponse);
     }
 
     if (!CROSS_CAMPUS_ROLES.includes(profile.role)) {
@@ -144,18 +210,25 @@ export async function updateSession(request) {
     return redirectWithCookies(loginUrl, supabaseResponse);
   }
 
-  // 2. Fetch authoritative profile (role, campus, active status)
+  // 2. Fetch authoritative profile (role, campus, active & approval status)
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("role, is_active, campus_id, campuses:campus_id(slug)")
+    .select("role, is_active, approval_status, campus_id, campuses:campus_id(slug)")
     .eq("id", user.id)
     .single();
 
-  if (profileError || !profile || !profile.is_active) {
+  if (profileError || !profile) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = `/login/${campusSlug}`;
     loginUrl.search = "?error=account_inactive";
     return redirectWithCookies(loginUrl, supabaseResponse);
+  }
+
+  if (!profile.is_active || profile.approval_status !== "approved") {
+    const pendingUrl = request.nextUrl.clone();
+    pendingUrl.pathname = "/pending-approval";
+    pendingUrl.search = "";
+    return redirectWithCookies(pendingUrl, supabaseResponse);
   }
 
   const userCampusSlug = profile.campuses?.slug ?? campusSlug;

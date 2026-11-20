@@ -18,8 +18,12 @@ export default async function RmoPortalPage({ params }) {
     redirect(`/login/${campusSlug}?next=/${campusSlug}/rmo`);
   }
 
-  if (!profile || !profile.is_active) {
+  if (!profile) {
     redirect(`/login/${campusSlug}?error=account_inactive`);
+  }
+
+  if (!profile.is_active || profile.approval_status !== "approved") {
+    redirect("/pending-approval");
   }
 
   if (!PORTAL_ROLE_ACCESS.rmo.includes(profile.role)) {

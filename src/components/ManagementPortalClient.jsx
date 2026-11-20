@@ -18,7 +18,9 @@ import {
   ChevronRight,
   ChevronUp,
   Clock,
+  CreditCard,
   Download,
+  Eye,
   FileSpreadsheet,
   FileText,
   Home,
@@ -30,8 +32,11 @@ import {
   Search,
   ShieldAlert,
   ShieldCheck,
+  UserCheck,
   Users,
   X,
+  XCircle,
+  ZoomIn,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -160,6 +165,18 @@ export default function ManagementPortalClient({
   const [editForm, setEditForm] = useState(null);
   const [savingUser, setSavingUser] = useState(false);
 
+  // Pending Registrations ID Verification Modal (Admin only)
+  const [reviewUser, setReviewUser] = useState(null);
+  const [reviewRole, setReviewRole] = useState("student");
+  const [reviewCampusId, setReviewCampusId] = useState("");
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [showRejectBox, setShowRejectBox] = useState(false);
+  const [loadingIdPhotos, setLoadingIdPhotos] = useState(false);
+  const [idPhotoUrls, setIdPhotoUrls] = useState({ front: "", back: "" });
+  const [idPhotoError, setIdPhotoError] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [zoomedPhoto, setZoomedPhoto] = useState(null);
+
   // Tab D: Audit Logs Viewer
   const [auditCampusFilter, setAuditCampusFilter] = useState("all");
   const [auditRoleFilter, setAuditRoleFilter] = useState("all");
@@ -201,7 +218,7 @@ export default function ManagementPortalClient({
     const { data } = await supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, id_front_path, id_back_path, rejection_reason, reviewed_by, reviewed_at, department, job_title, office_location, show_on_kiosk, is_active, created_at"
       )
       .order("created_at", { ascending: false });
     if (data) setUsers(data);
@@ -270,10 +287,10 @@ export default function ManagementPortalClient({
     runSlaCheck(true);
   }, [runSlaCheck]);
 
-  // Supabase Realtime subscriptions on documents & notifications
+  // Supabase Realtime subscriptions on documents, notifications & profiles (admin)
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
+    let channel = supabase
       .channel(`management-realtime-${profile.id}`)
       .on(
         "postgres_changes",
@@ -289,15 +306,24 @@ export default function ManagementPortalClient({
           filter: `user_id=eq.${profile.id}`,
         },
         () => refreshUnreadAlerts()
-      )
-      .subscribe((status) => {
-        setRealtimeLive(status === "SUBSCRIBED");
-      });
+      );
+
+    if (isAdmin) {
+      channel = channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "profiles" },
+        () => refreshUsers()
+      );
+    }
+
+    channel.subscribe((status) => {
+      setRealtimeLive(status === "SUBSCRIBED");
+    });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile.id, refreshDocuments, refreshUnreadAlerts]);
+  }, [isAdmin, profile.id, refreshDocuments, refreshUnreadAlerts, refreshUsers]);
 
   // Campus-scoped documents
   const campusScopedDocs = useMemo(() => {
@@ -549,6 +575,122 @@ export default function ManagementPortalClient({
     );
   }
 
+  // Pending Registrations Queue (Admin only)
+  const pendingRegistrations = useMemo(() => {
+    if (!isAdmin) return [];
+    return users
+      .filter((u) => u.approval_status === "pending")
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+  }, [isAdmin, users]);
+
+  async function openReviewModal(target) {
+    setReviewUser(target);
+    setReviewRole(target.requested_role || target.role || "student");
+    setReviewCampusId(target.campus_id || campuses[0]?.id || "");
+    setRejectionReason("");
+    setShowRejectBox(false);
+    setIdPhotoUrls({ front: "", back: "" });
+    setIdPhotoError("");
+    setZoomedPhoto(null);
+
+    if (!target.id_front_path && !target.id_back_path) {
+      setIdPhotoError("No ID verification photos were attached to this registration.");
+      return;
+    }
+
+    setLoadingIdPhotos(true);
+    try {
+      const supabase = createClient();
+      const [frontRes, backRes] = await Promise.all([
+        target.id_front_path
+          ? supabase.storage
+              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
+              .createSignedUrl(target.id_front_path, 300)
+          : Promise.resolve({ data: null, error: null }),
+        target.id_back_path
+          ? supabase.storage
+              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
+              .createSignedUrl(target.id_back_path, 300)
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
+      if (frontRes.error || backRes.error) {
+        setIdPhotoError(
+          frontRes.error?.message ||
+            backRes.error?.message ||
+            "Unable to load signed ID verification photos."
+        );
+      }
+
+      setIdPhotoUrls({
+        front: frontRes.data?.signedUrl ?? "",
+        back: backRes.data?.signedUrl ?? "",
+      });
+    } finally {
+      setLoadingIdPhotos(false);
+    }
+  }
+
+  function closeReviewModal() {
+    setReviewUser(null);
+    setIdPhotoUrls({ front: "", back: "" });
+    setIdPhotoError("");
+    setShowRejectBox(false);
+    setRejectionReason("");
+    setZoomedPhoto(null);
+  }
+
+  async function handleReviewDecision(decision) {
+    if (!reviewUser || !isAdmin) return;
+    if (decision === "reject" && !rejectionReason.trim()) {
+      setFeedback({
+        type: "error",
+        message: "Please provide a brief reason before rejecting a registration.",
+      });
+      return;
+    }
+
+    setSubmittingReview(true);
+    setFeedback(null);
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.rpc("review_user_registration", {
+        p_user_id: reviewUser.id,
+        p_decision: decision,
+        p_assigned_role: reviewRole,
+        p_campus_id: reviewCampusId || reviewUser.campus_id,
+        p_rejection_reason: decision === "reject" ? rejectionReason.trim() : null,
+      });
+
+      if (error) {
+        setFeedback({
+          type: "error",
+          message: `Verification action failed: ${error.message}`,
+        });
+        return;
+      }
+
+      const targetName = reviewUser.full_name;
+      const targetId = reviewUser.employee_or_student_id;
+      closeReviewModal();
+      await Promise.all([refreshUsers(), refreshAuditLogs()]);
+
+      setFeedback({
+        type: decision === "approve" ? "success" : "warning",
+        message:
+          decision === "approve"
+            ? `Approved ${targetName} (ID ${targetId ?? "N/A"}) as ${ROLE_LABELS[reviewRole] ?? reviewRole}.`
+            : `Declined registration for ${targetName} (ID ${targetId ?? "N/A"}).`,
+      });
+    } finally {
+      setSubmittingReview(false);
+    }
+  }
+
   // Tab C: Filtered Users & Save Edit
   const filteredUsers = useMemo(() => {
     const q = userSearch.trim().toLowerCase();
@@ -561,6 +703,7 @@ export default function ManagementPortalClient({
       return (
         u.full_name?.toLowerCase().includes(q) ||
         u.email?.toLowerCase().includes(q) ||
+        u.employee_or_student_id?.toLowerCase().includes(q) ||
         u.department?.toLowerCase().includes(q)
       );
     });
@@ -758,6 +901,13 @@ export default function ManagementPortalClient({
       label: "Bottlenecks & Reports",
       icon: BarChart3,
       visible: true,
+    },
+    {
+      id: "registrations",
+      label: "Pending Registrations",
+      icon: UserCheck,
+      badge: pendingRegistrations.length,
+      visible: isAdmin,
     },
     {
       id: "users",
@@ -1453,6 +1603,104 @@ export default function ManagementPortalClient({
           )}
 
           {/* ============================================================== */}
+          {/* TAB: PENDING REGISTRATIONS & ID VERIFICATION (ADMIN ONLY)      */}
+          {/* ============================================================== */}
+          {activeTab === "registrations" && isAdmin && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold text-chmsu-forest">
+                    Pending Registrations &amp; ID Verification
+                  </h1>
+                  <p className="text-sm text-slate-600">
+                    Inspect uploaded Front &amp; Back CHMSU School IDs via
+                    short-lived private signed URLs before approving or
+                    declining accounts.
+                  </p>
+                </div>
+
+                <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900 tabular-nums">
+                  <Clock className="h-3.5 w-3.5 text-amber-600" />
+                  {pendingRegistrations.length} Pending Review
+                </span>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
+                {pendingRegistrations.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-2 p-10 text-center">
+                    <CheckCircle2 className="h-9 w-9 text-chmsu-green" />
+                    <p className="text-sm font-bold text-chmsu-forest">
+                      All registrations have been reviewed
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      New 8-digit ID registrations will appear here
+                      automatically in real time.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[780px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-5 py-3">ID Number</th>
+                          <th className="px-4 py-3">Applicant</th>
+                          <th className="px-4 py-3">Campus</th>
+                          <th className="px-4 py-3">Requested Role</th>
+                          <th className="px-4 py-3">Submitted</th>
+                          <th className="px-5 py-3 text-right">Verification</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-chmsu-border">
+                        {pendingRegistrations.map((u) => (
+                          <tr key={u.id} className="hover:bg-chmsu-canvas/60">
+                            <td className="px-5 py-3.5">
+                              <span className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border bg-chmsu-canvas px-2.5 py-1 font-mono text-xs font-bold tracking-widest text-chmsu-forest">
+                                <CreditCard className="h-3.5 w-3.5 text-chmsu-green" />
+                                {u.employee_or_student_id ?? "—"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <p className="font-semibold text-slate-900">
+                                {u.full_name}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {u.department || "No department specified"}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs font-medium text-slate-700">
+                              CHMSU {campusMap[u.campus_id]?.name ?? "Unassigned"}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                                {ROLE_LABELS[u.requested_role ?? "student"] ??
+                                  u.requested_role ??
+                                  "Student"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">
+                              {formatDateTime(u.created_at)}
+                            </td>
+                            <td className="px-5 py-3.5 text-right">
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(u)}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-green"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                View ID Photos
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ============================================================== */}
           {/* TAB C: USER & ROLE PERMISSIONS MANAGEMENT (ADMIN ONLY)         */}
           {/* ============================================================== */}
           {activeTab === "users" && isAdmin && (
@@ -1537,6 +1785,11 @@ export default function ManagementPortalClient({
                               )}
                             </p>
                             <p className="text-xs text-slate-500">
+                              {u.employee_or_student_id ? (
+                                <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
+                                  ID {u.employee_or_student_id}
+                                </span>
+                              ) : null}
                               {u.email}
                               {u.department ? ` • ${u.department}` : ""}
                             </p>
@@ -1898,6 +2151,340 @@ export default function ManagementPortalClient({
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin View ID Photos & Registration Verification Modal */}
+      {reviewUser && isAdmin && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Verify School ID Photos"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 backdrop-blur-xs"
+        >
+          <div className="flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-chmsu-border bg-chmsu-forest px-5 py-4 text-white">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-chmsu-gold">
+                  School ID Verification &bull; Private Signed URL (5 min)
+                </p>
+                <h3 className="text-base font-bold">
+                  {reviewUser.full_name}{" "}
+                  <span className="ml-1.5 rounded bg-white/15 px-2 py-0.5 font-mono text-xs tracking-widest">
+                    {reviewUser.employee_or_student_id ?? "No ID"}
+                  </span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeReviewModal}
+                aria-label="Close ID verification modal"
+                className="rounded-lg p-1.5 text-white/80 hover:bg-white/10"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              {/* Applicant Summary */}
+              <div className="grid grid-cols-1 gap-3 rounded-xl border border-chmsu-border bg-chmsu-canvas p-3.5 text-xs sm:grid-cols-3">
+                <div>
+                  <span className="font-semibold text-slate-500">
+                    College / Department
+                  </span>
+                  <p className="mt-0.5 font-bold text-slate-900">
+                    {reviewUser.department || "—"}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-500">
+                    Requested Role
+                  </span>
+                  <p className="mt-0.5 font-bold text-chmsu-navy">
+                    {ROLE_LABELS[reviewUser.requested_role ?? "student"] ??
+                      reviewUser.requested_role ??
+                      "Student"}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-500">
+                    Submitted At
+                  </span>
+                  <p className="mt-0.5 font-semibold text-slate-800 tabular-nums">
+                    {formatDateTime(reviewUser.created_at)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Front & Back ID Photos Side-by-Side */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                    Uploaded School ID Photos (Click to Zoom)
+                  </h4>
+                </div>
+
+                {idPhotoError && (
+                  <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    {idPhotoError}
+                  </div>
+                )}
+
+                {loadingIdPhotos ? (
+                  <div className="mt-3 flex h-48 items-center justify-center gap-2 rounded-xl border border-chmsu-border bg-slate-50 text-xs text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin text-chmsu-green" />
+                    Generating short-lived signed URLs from private storage...
+                  </div>
+                ) : (
+                  <div className="mt-2.5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {/* Front ID */}
+                    <div className="overflow-hidden rounded-xl border border-chmsu-border bg-slate-50">
+                      <div className="flex items-center justify-between border-b border-chmsu-border bg-white px-3 py-2 text-xs font-bold text-chmsu-forest">
+                        <span>Front of School ID</span>
+                        {idPhotoUrls.front && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setZoomedPhoto({
+                                label: "Front of School ID",
+                                url: idPhotoUrls.front,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-chmsu-navy hover:text-chmsu-green"
+                          >
+                            <ZoomIn className="h-3.5 w-3.5" />
+                            Zoom
+                          </button>
+                        )}
+                      </div>
+                      {idPhotoUrls.front ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setZoomedPhoto({
+                              label: "Front of School ID",
+                              url: idPhotoUrls.front,
+                            })
+                          }
+                          className="block w-full cursor-zoom-in p-2"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={idPhotoUrls.front}
+                            alt="Front of School ID"
+                            className="h-56 w-full rounded-lg object-contain bg-white"
+                          />
+                        </button>
+                      ) : (
+                        <div className="flex h-56 items-center justify-center text-xs text-slate-400">
+                          No front ID image uploaded
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Back ID */}
+                    <div className="overflow-hidden rounded-xl border border-chmsu-border bg-slate-50">
+                      <div className="flex items-center justify-between border-b border-chmsu-border bg-white px-3 py-2 text-xs font-bold text-chmsu-forest">
+                        <span>Back of School ID</span>
+                        {idPhotoUrls.back && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setZoomedPhoto({
+                                label: "Back of School ID",
+                                url: idPhotoUrls.back,
+                              })
+                            }
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-chmsu-navy hover:text-chmsu-green"
+                          >
+                            <ZoomIn className="h-3.5 w-3.5" />
+                            Zoom
+                          </button>
+                        )}
+                      </div>
+                      {idPhotoUrls.back ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setZoomedPhoto({
+                              label: "Back of School ID",
+                              url: idPhotoUrls.back,
+                            })
+                          }
+                          className="block w-full cursor-zoom-in p-2"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={idPhotoUrls.back}
+                            alt="Back of School ID"
+                            className="h-56 w-full rounded-lg object-contain bg-white"
+                          />
+                        </button>
+                      ) : (
+                        <div className="flex h-56 items-center justify-center text-xs text-slate-400">
+                          No back ID image uploaded
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Editable Campus & Assigned Role for Approval */}
+              <div className="grid grid-cols-1 gap-3 rounded-xl border border-chmsu-border bg-white p-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-600">
+                    Assigned Campus
+                  </label>
+                  <select
+                    value={reviewCampusId}
+                    onChange={(e) => setReviewCampusId(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900"
+                  >
+                    {campuses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        CHMSU {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-slate-600">
+                    Assigned Role
+                  </label>
+                  <select
+                    value={reviewRole}
+                    onChange={(e) => setReviewRole(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900"
+                  >
+                    {ALL_ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {ROLE_LABELS[r] ?? r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Optional Rejection Reason Box */}
+              {showRejectBox && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                  <label
+                    htmlFor="rejection-reason"
+                    className="block text-xs font-bold uppercase text-red-800"
+                  >
+                    Reason for Declining Registration
+                  </label>
+                  <textarea
+                    id="rejection-reason"
+                    rows={2}
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="e.g., ID photo is blurry or ID number does not match the uploaded School ID."
+                    className="mt-1.5 w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-red-400"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-chmsu-border bg-chmsu-canvas px-5 py-3.5">
+              {!showRejectBox ? (
+                <button
+                  type="button"
+                  disabled={submittingReview}
+                  onClick={() => setShowRejectBox(true)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2 text-xs font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-60"
+                >
+                  <XCircle className="h-4 w-4" />
+                  Reject...
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={submittingReview}
+                    onClick={() => setShowRejectBox(false)}
+                    className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submittingReview}
+                    onClick={() => handleReviewDecision("reject")}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {submittingReview && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Confirm Reject
+                  </button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={submittingReview}
+                  onClick={closeReviewModal}
+                  className="rounded-xl border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={submittingReview}
+                  onClick={() => handleReviewDecision("approve")}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-bold text-white transition hover:bg-chmsu-green disabled:opacity-60"
+                >
+                  {submittingReview ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  Approve &amp; Activate Account
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Zoomed ID Photo Lightbox */}
+      {zoomedPhoto && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={zoomedPhoto.label}
+          onClick={() => setZoomedPhoto(null)}
+          className="no-print fixed inset-0 z-[60] flex flex-col items-center justify-center bg-slate-950/90 p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[92dvh] max-w-5xl flex-col items-center gap-3"
+          >
+            <div className="flex w-full items-center justify-between text-white">
+              <span className="text-sm font-bold">{zoomedPhoto.label}</span>
+              <button
+                type="button"
+                onClick={() => setZoomedPhoto(null)}
+                className="inline-flex items-center gap-1 rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/25"
+              >
+                <X className="h-4 w-4" />
+                Close
+              </button>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={zoomedPhoto.url}
+              alt={zoomedPhoto.label}
+              className="max-h-[82dvh] max-w-full rounded-xl bg-white object-contain shadow-2xl"
+            />
           </div>
         </div>
       )}

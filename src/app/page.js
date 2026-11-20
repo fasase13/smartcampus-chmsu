@@ -7,6 +7,7 @@ import {
   LogIn,
   ShieldCheck,
   ArrowRight,
+  UserPlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 
@@ -48,14 +49,23 @@ export default async function CampusGatewayPage() {
             </div>
           </div>
 
-          <Link
-            href="/login/management"
-            className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/20 sm:text-sm"
-          >
-            <ShieldCheck className="h-4 w-4 text-chmsu-gold" />
-            <span className="hidden sm:inline">Management / Admin</span>
-            <span className="sm:hidden">Admin</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 rounded-lg bg-chmsu-gold px-3 py-2 text-xs font-bold text-chmsu-forest transition hover:bg-white sm:text-sm"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>Register Account</span>
+            </Link>
+            <Link
+              href="/login/management"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-xs font-medium text-white transition hover:bg-white/20 sm:text-sm"
+            >
+              <ShieldCheck className="h-4 w-4 text-chmsu-gold" />
+              <span className="hidden sm:inline">Management / Admin</span>
+              <span className="sm:hidden">Admin</span>
+            </Link>
+          </div>
         </div>
       </header>
 

@@ -18,8 +18,12 @@ export default async function FacultyPortalPage({ params }) {
     redirect(`/login/${campusSlug}?next=/${campusSlug}/faculty`);
   }
 
-  if (!profile || !profile.is_active) {
+  if (!profile) {
     redirect(`/login/${campusSlug}?error=account_inactive`);
+  }
+
+  if (!profile.is_active || profile.approval_status !== "approved") {
+    redirect("/pending-approval");
   }
 
   // Server-side RBAC check (defense-in-depth alongside proxy middleware)

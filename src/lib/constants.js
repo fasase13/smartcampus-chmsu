@@ -47,6 +47,15 @@ export const ROLES = {
 
 export const ALL_ROLES = Object.values(ROLES);
 
+export const SELF_REGISTER_ROLES = [
+  ROLES.STUDENT,
+  ROLES.FACULTY,
+  ROLES.STAFF,
+  ROLES.DEPT_HEAD,
+  ROLES.RMO,
+  ROLES.MANAGEMENT,
+];
+
 export const CROSS_CAMPUS_ROLES = [ROLES.ADMIN, ROLES.MANAGEMENT];
 
 export const ROLE_LABELS = {
@@ -240,6 +249,13 @@ export const SLA_PRESETS = [
 ];
 
 export const MAX_DOCUMENT_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
+export const MAX_ID_PHOTO_BYTES = 5 * 1024 * 1024; // 5 MB
+
+export const ALLOWED_ID_PHOTO_MIME_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
 
 export const ALLOWED_DOCUMENT_MIME_TYPES = [
   "application/pdf",
@@ -254,4 +270,5 @@ export const ALLOWED_DOCUMENT_MIME_TYPES = [
 
 export const STORAGE_BUCKETS = {
   DOCUMENT_FILES: "document-files",
+  ID_VERIFICATIONS: "id-verifications",
 };
