@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -17,10 +16,8 @@ import {
   Loader2,
   LogOut,
   MapPin,
-  Monitor,
   Newspaper,
   Pin,
-  Radio,
   Search,
   ShieldCheck,
   Users,
@@ -34,7 +31,6 @@ import {
   ROUTE_ACTION_LABELS,
   getAvailabilityMeta,
 } from "@/lib/constants";
-import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
 
 const NEWS_CATEGORIES = [
   { value: "all", label: "All" },
@@ -67,7 +63,6 @@ export default function StudentPortalClient({
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
   const [faculty, setFaculty] = useState(initialFaculty);
   const [notifications, setNotifications] = useState(initialNotifications);
-  const [realtimeLive, setRealtimeLive] = useState(false);
 
   // News filters
   const [newsQuery, setNewsQuery] = useState("");
@@ -173,9 +168,7 @@ export default function StudentPortalClient({
         },
         () => refreshNotifications()
       )
-      .subscribe((status) => {
-        setRealtimeLive(status === "SUBSCRIBED");
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -392,18 +385,6 @@ export default function StudentPortalClient({
               </button>
             );
           })}
-
-          <div className="pt-3">
-            <Link
-              href={`/${campus.slug}/kiosk`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
-            >
-              <Monitor className="h-4 w-4 shrink-0" />
-              Open Public Kiosk
-            </Link>
-          </div>
         </nav>
 
         <div className="border-t border-white/10 p-4">
@@ -446,19 +427,9 @@ export default function StudentPortalClient({
                 className="h-9 w-9 shrink-0 rounded-full object-contain md:hidden"
               />
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-bold text-chmsu-forest sm:text-base">
-                    {profile.full_name}
-                  </p>
-                  <span className="hidden items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 sm:inline-flex">
-                    <Radio
-                      className={`h-3 w-3 ${
-                        realtimeLive ? "text-emerald-600 animate-pulse" : "text-slate-400"
-                      }`}
-                    />
-                    {realtimeLive ? "Live" : "..."}
-                  </span>
-                </div>
+                <p className="truncate text-sm font-bold text-chmsu-forest sm:text-base">
+                  {profile.full_name}
+                </p>
                 <p className="truncate text-xs font-medium text-slate-500">
                   CHMSU {campus.name} &bull; Student Portal
                 </p>
@@ -466,9 +437,6 @@ export default function StudentPortalClient({
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <div className="hidden sm:block">
-                <PrivacyNoticeModal compact />
-              </div>
               <span className="hidden rounded-full border border-chmsu-green/25 bg-chmsu-green/10 px-3 py-1 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                 {campus.code}
               </span>

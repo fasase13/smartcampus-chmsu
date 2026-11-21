@@ -16,7 +16,6 @@ import {
   Loader2,
   PackageCheck,
   QrCode,
-  Radio,
   RotateCcw,
   Search,
   Send,
@@ -107,7 +106,6 @@ export default function OfficeScannerClient({
   // Office Queue State
   const [queueDocs, setQueueDocs] = useState(initialDocuments);
   const [queueTab, setQueueTab] = useState("incoming"); // incoming | active
-  const [realtimeLive, setRealtimeLive] = useState(false);
 
   // Feedback Banner
   const [feedback, setFeedback] = useState(null);
@@ -177,9 +175,7 @@ export default function OfficeScannerClient({
           }
         }
       )
-      .subscribe((status) => {
-        setRealtimeLive(status === "SUBSCRIBED");
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -547,15 +543,6 @@ export default function OfficeScannerClient({
             {campus.name}.
           </p>
         </div>
-
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
-          <Radio
-            className={`h-3.5 w-3.5 ${
-              realtimeLive ? "text-emerald-600 animate-pulse" : "text-slate-400"
-            }`}
-          />
-          {realtimeLive ? "Live Queue" : "Connecting..."}
-        </span>
       </div>
 
       {/* Feedback Banner */}

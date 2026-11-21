@@ -27,7 +27,6 @@ import {
   Loader2,
   LogOut,
   Printer,
-  Radio,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -127,7 +126,6 @@ export default function ManagementPortalClient({
   const [users, setUsers] = useState(initialUsers);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
   const [unreadAlerts, setUnreadAlerts] = useState(initialUnreadAlerts);
-  const [realtimeLive, setRealtimeLive] = useState(false);
 
   // SLA Check State
   const [runningSla, setRunningSla] = useState(false);
@@ -317,9 +315,7 @@ export default function ManagementPortalClient({
       );
     }
 
-    channel.subscribe((status) => {
-      setRealtimeLive(status === "SUBSCRIBED");
-    });
+    channel.subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -1042,15 +1038,6 @@ export default function ManagementPortalClient({
                   </option>
                 ))}
               </select>
-
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                <Radio
-                  className={`h-3.5 w-3.5 ${
-                    realtimeLive ? "text-emerald-600 animate-pulse" : "text-slate-400"
-                  }`}
-                />
-                {realtimeLive ? "Live" : "..."}
-              </span>
             </div>
 
             <div className="flex items-center gap-2.5">

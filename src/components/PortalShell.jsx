@@ -6,7 +6,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LogOut,
-  Monitor,
   Megaphone,
   Menu,
   X,
@@ -75,13 +74,6 @@ export default function PortalShell({
         ROLES.ADMIN,
         ROLES.MANAGEMENT,
       ].includes(profile?.role),
-    },
-    {
-      href: `/${campusSlug}/kiosk`,
-      label: "View Public Kiosk",
-      icon: Monitor,
-      visible: true,
-      external: true,
     },
     {
       href: "/",

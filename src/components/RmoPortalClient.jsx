@@ -13,7 +13,6 @@ import {
   Loader2,
   Paperclip,
   QrCode,
-  Radio,
   RefreshCw,
   Search,
   Upload,
@@ -91,7 +90,6 @@ export default function RmoPortalClient({
 
   // Registry State
   const [documents, setDocuments] = useState(initialDocuments);
-  const [realtimeLive, setRealtimeLive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -186,9 +184,7 @@ export default function RmoPortalClient({
           }
         }
       )
-      .subscribe((status) => {
-        setRealtimeLive(status === "SUBSCRIBED");
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -456,22 +452,14 @@ export default function RmoPortalClient({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
-            <Radio
-              className={`h-3.5 w-3.5 ${
-                realtimeLive ? "text-emerald-600 animate-pulse" : "text-slate-400"
-              }`}
-            />
-            {realtimeLive ? "Live Registry" : "Connecting..."}
-          </span>
-          {overdueCount > 0 && (
+        {overdueCount > 0 && (
+          <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-800 tabular-nums">
               <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
               {overdueCount} Overdue
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Feedback Banner */}
