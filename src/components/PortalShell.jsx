@@ -275,7 +275,7 @@ export default function PortalShell({
         )}
 
         {/* Page Body */}
-        <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-6">
+        <main className="w-full flex-1 px-4 py-5 sm:px-6">
           {children}
         </main>
       </div>

@@ -417,7 +417,7 @@ export default function StudentPortalClient({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Sticky Header */}
         <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-4xl items-center justify-between gap-3">
+          <div className="flex w-full items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <Image
                 src="/images/chmsu-logo.jpg"
@@ -436,15 +436,12 @@ export default function StudentPortalClient({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="hidden rounded-full border border-chmsu-green/25 bg-chmsu-green/10 px-3 py-1 text-xs font-semibold text-chmsu-forest sm:inline-flex">
-                {campus.code}
-              </span>
+            <div className="flex shrink-0 items-center gap-2 md:hidden">
               <button
                 type="button"
                 onClick={handleSignOut}
                 disabled={signingOut}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60 md:hidden"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
               >
                 <LogOut className="h-4 w-4" />
                 Sign Out
@@ -454,7 +451,7 @@ export default function StudentPortalClient({
         </header>
 
         {/* Main Content Area (padded for mobile bottom nav) */}
-        <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-5 pb-24 sm:px-6 md:pb-8">
+        <main className="w-full flex-1 px-4 py-5 pb-24 sm:px-6 md:pb-8">
           {/* ============================================================== */}
           {/* TAB 1: CAMPUS NEWS & ADVISORIES                                */}
           {/* ============================================================== */}

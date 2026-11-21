@@ -1016,7 +1016,7 @@ export default function ManagementPortalClient({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top Action Bar (hidden on print) */}
         <header className="no-print sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
               <label
                 htmlFor="mgmt_campus_scope"
@@ -1076,7 +1076,7 @@ export default function ManagementPortalClient({
         </header>
 
         {/* Main Workspace */}
-        <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 sm:p-6">
+        <main className="w-full flex-1 space-y-6 px-4 py-5 sm:px-6">
           {/* Print-Only Institutional Report Header */}
           <div className="hidden border-b-2 border-chmsu-forest pb-4 print:block">
             <div className="flex items-center justify-between">
