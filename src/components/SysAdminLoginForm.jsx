@@ -49,10 +49,11 @@ export default function SysAdminLoginForm() {
         .eq("id", authData.user.id)
         .single();
 
+      // Strictly superadmin ONLY
       if (
         profileError ||
         !profile ||
-        profile.role !== ROLES.ADMIN ||
+        profile.role !== ROLES.SUPERADMIN ||
         !profile.is_active ||
         profile.approval_status !== "approved"
       ) {
@@ -61,7 +62,7 @@ export default function SysAdminLoginForm() {
         return;
       }
 
-      router.push("/management");
+      router.push("/superadmin");
       router.refresh();
     } catch {
       setErrorMessage("An unexpected error occurred. Please try again.");
@@ -90,14 +91,14 @@ export default function SysAdminLoginForm() {
                 SmartCampus CHMSU
               </p>
               <h1 className="text-lg font-bold tracking-tight">
-                System Administrator Login
+                System Admin Portal
               </h1>
             </div>
           </div>
 
           <div className="mt-4 flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/90">
             <ShieldCheck className="h-4 w-4 shrink-0 text-chmsu-gold" />
-            <span>Authorized System Administrators only</span>
+            <span>Authorized Superadmin access only</span>
           </div>
         </div>
 
@@ -114,21 +115,21 @@ export default function SysAdminLoginForm() {
 
           <div>
             <label
-              htmlFor="admin-email"
+              htmlFor="sysadmin-email"
               className="block text-sm font-semibold text-slate-700"
             >
-              Administrator Email
+              System Admin Email
             </label>
             <div className="relative mt-1.5">
               <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                id="admin-email"
+                id="sysadmin-email"
                 type="email"
                 required
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@chmsu.edu.ph"
+                placeholder="superadmin@chmsu.edu.ph"
                 className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
               />
             </div>
@@ -136,7 +137,7 @@ export default function SysAdminLoginForm() {
 
           <div>
             <label
-              htmlFor="admin-password"
+              htmlFor="sysadmin-password"
               className="block text-sm font-semibold text-slate-700"
             >
               Password
@@ -144,13 +145,13 @@ export default function SysAdminLoginForm() {
             <div className="relative mt-1.5">
               <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
-                id="admin-password"
+                id="sysadmin-password"
                 type={showPassword ? "text" : "password"}
                 required
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter administrator password"
+                placeholder="Enter password"
                 className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-10 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
               />
               <button
@@ -179,7 +180,7 @@ export default function SysAdminLoginForm() {
                 Verifying...
               </>
             ) : (
-              "Sign In as System Administrator"
+              "Sign In to System Admin Portal"
             )}
           </button>
         </form>

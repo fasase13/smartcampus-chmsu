@@ -36,7 +36,8 @@ export function getCampusBySlug(slug) {
 }
 
 export const ROLES = {
-  ADMIN: "admin",
+  SUPERADMIN: "superadmin",
+  CAMPUS_ADMIN: "campus_admin",
   RMO: "rmo",
   DEPT_HEAD: "dept_head",
   FACULTY: "faculty",
@@ -47,6 +48,8 @@ export const ROLES = {
 
 export const ALL_ROLES = Object.values(ROLES);
 
+export const ADMIN_PORTAL_ROLES = [ROLES.SUPERADMIN, ROLES.CAMPUS_ADMIN];
+
 export const SELF_REGISTER_ROLES = [
   ROLES.STUDENT,
   ROLES.FACULTY,
@@ -56,10 +59,20 @@ export const SELF_REGISTER_ROLES = [
   ROLES.MANAGEMENT,
 ];
 
-export const CROSS_CAMPUS_ROLES = [ROLES.ADMIN, ROLES.MANAGEMENT];
+export const CAMPUS_ADMIN_ASSIGNABLE_ROLES = [
+  ROLES.STUDENT,
+  ROLES.FACULTY,
+  ROLES.STAFF,
+  ROLES.DEPT_HEAD,
+  ROLES.RMO,
+  ROLES.MANAGEMENT,
+];
+
+export const CROSS_CAMPUS_ROLES = [ROLES.SUPERADMIN, ROLES.MANAGEMENT];
 
 export const ROLE_LABELS = {
-  [ROLES.ADMIN]: "System Admin",
+  [ROLES.SUPERADMIN]: "Superadmin",
+  [ROLES.CAMPUS_ADMIN]: "Campus Admin",
   [ROLES.RMO]: "Records Management Officer",
   [ROLES.DEPT_HEAD]: "Department Head",
   [ROLES.FACULTY]: "Faculty",
@@ -68,34 +81,51 @@ export const ROLE_LABELS = {
   [ROLES.STUDENT]: "Student",
 };
 
+export const CAMPUS_ADMIN_TITLES = {
+  talisay: "Talisay Admin",
+  alijis: "Alijis Admin",
+  binalbagan: "Binalbagan Admin",
+  "fortune-towne": "Fortune Towne Admin",
+};
+
+export function getCampusAdminTitle(slug, fallbackName) {
+  return CAMPUS_ADMIN_TITLES[slug] ?? `${fallbackName || "Campus"} Admin`;
+}
+
 /**
  * Route-level RBAC matrix for campus-scoped private portals: /[campus]/[section]
- * Public routes (/[campus]/kiosk, /login/[campus]) are handled separately.
+ * Public routes (/[campus]/kiosk) are handled separately.
  */
 export const PORTAL_ROLE_ACCESS = {
+  admin: [ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN],
   faculty: [
     ROLES.FACULTY,
     ROLES.STAFF,
     ROLES.DEPT_HEAD,
     ROLES.RMO,
-    ROLES.ADMIN,
+    ROLES.CAMPUS_ADMIN,
+    ROLES.SUPERADMIN,
     ROLES.MANAGEMENT,
   ],
-  student: [ROLES.STUDENT, ROLES.ADMIN, ROLES.MANAGEMENT],
-  rmo: [ROLES.RMO, ROLES.ADMIN, ROLES.MANAGEMENT],
+  student: [ROLES.STUDENT, ROLES.SUPERADMIN, ROLES.MANAGEMENT],
+  rmo: [ROLES.RMO, ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN, ROLES.MANAGEMENT],
   office: [
     ROLES.DEPT_HEAD,
     ROLES.RMO,
     ROLES.FACULTY,
     ROLES.STAFF,
-    ROLES.ADMIN,
+    ROLES.CAMPUS_ADMIN,
+    ROLES.SUPERADMIN,
     ROLES.MANAGEMENT,
   ],
 };
 
 export function getDefaultRouteForRole(role, campusSlug) {
   switch (role) {
-    case ROLES.ADMIN:
+    case ROLES.SUPERADMIN:
+      return "/superadmin";
+    case ROLES.CAMPUS_ADMIN:
+      return `/${campusSlug}/admin`;
     case ROLES.MANAGEMENT:
       return "/management";
     case ROLES.RMO:

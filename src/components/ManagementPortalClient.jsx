@@ -109,7 +109,7 @@ export default function ManagementPortalClient({
   initialUnreadAlerts,
 }) {
   const router = useRouter();
-  const isAdmin = profile.role === ROLES.ADMIN;
+  const isAdmin = profile.role === ROLES.SUPERADMIN;
 
   const campusMap = useMemo(
     () => Object.fromEntries(campuses.map((c) => [c.id, c])),
@@ -726,11 +726,11 @@ export default function ManagementPortalClient({
 
     // Prevent self-demotion or self-deactivation
     if (editingUser.id === profile.id) {
-      if (editForm.role !== ROLES.ADMIN || !editForm.is_active) {
+      if (editForm.role !== ROLES.SUPERADMIN || !editForm.is_active) {
         setFeedback({
           type: "error",
           message:
-            "Safety guard: You cannot demote or deactivate your own System Admin account.",
+            "Safety guard: You cannot demote or deactivate your own Superadmin account.",
         });
         return;
       }
@@ -942,7 +942,7 @@ export default function ManagementPortalClient({
               SmartCampus CHMSU
             </p>
             <p className="truncate text-[11px] font-semibold text-chmsu-gold">
-              {isAdmin ? "System Administration" : "Institutional Management"}
+              {isAdmin ? "Superadmin" : "Institutional Management"}
             </p>
           </div>
         </div>

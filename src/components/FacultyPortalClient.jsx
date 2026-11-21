@@ -397,7 +397,10 @@ export default function FacultyPortalClient({
   }
 
   function canEditRow(item) {
-    if (profile.role === ROLES.ADMIN) return true;
+    if (profile.role === ROLES.SUPERADMIN) return true;
+    if (profile.role === ROLES.CAMPUS_ADMIN && item.campus_id === campus.id) {
+      return true;
+    }
     if (profile.role === ROLES.MANAGEMENT && (item.campus_id === null || item.campus_id === campus.id)) {
       return true;
     }
@@ -409,7 +412,11 @@ export default function FacultyPortalClient({
   }
 
   function canDeleteRow(item) {
-    return profile.role === ROLES.ADMIN || item.author_id === profile.id;
+    return (
+      profile.role === ROLES.SUPERADMIN ||
+      (profile.role === ROLES.CAMPUS_ADMIN && item.campus_id === campus.id) ||
+      item.author_id === profile.id
+    );
   }
 
   const currentStatusMeta = getAvailabilityMeta(availabilityStatus);

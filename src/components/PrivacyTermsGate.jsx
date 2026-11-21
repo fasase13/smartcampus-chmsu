@@ -11,7 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { ROLES } from "@/lib/constants";
+import { ADMIN_PORTAL_ROLES } from "@/lib/constants";
 
 export default function PrivacyTermsGate({ profile }) {
   const router = useRouter();
@@ -20,7 +20,7 @@ export default function PrivacyTermsGate({ profile }) {
     profile &&
       profile.approval_status === "approved" &&
       profile.is_active === true &&
-      profile.role !== ROLES.ADMIN &&
+      !ADMIN_PORTAL_ROLES.includes(profile.role) &&
       profile.privacy_terms_accepted === false
   );
 
@@ -194,8 +194,8 @@ export default function PrivacyTermsGate({ profile }) {
               <p>
                 Your School ID photos and 8-digit ID number are stored in
                 private, access-controlled storage buckets and are accessible
-                strictly to authorized CHMSU System Administrators via
-                short-lived signed links for account verification. Personal ID
+                strictly to the CHMSU Superadmin and your assigned Campus Admin
+                via short-lived signed links for account verification. Personal ID
                 numbers, email addresses, ID photos, internal document remarks,
                 and custody logs are NEVER exposed on public campus kiosks.
                 Public kiosks display only published university announcements

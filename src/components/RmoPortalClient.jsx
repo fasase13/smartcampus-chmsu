@@ -127,7 +127,7 @@ export default function RmoPortalClient({
     return staffDirectory.filter(
       (s) =>
         s.campus_id === destinationCampusId ||
-        s.role === "admin" ||
+        s.role === "superadmin" ||
         s.role === "management"
     );
   }, [staffDirectory, destinationCampusId]);

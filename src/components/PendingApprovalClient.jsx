@@ -60,7 +60,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
         setStatusMessage("Your registration status is currently Declined.");
       } else if (data.approval_status === "pending") {
         setStatusMessage(
-          "Still pending review by a CHMSU System Administrator. Please check back shortly."
+          "Still pending review by your Campus Admin or Superadmin. Please check back shortly."
         );
       } else {
         setStatusMessage(
@@ -160,7 +160,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
                 role="alert"
                 className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"
               >
-                <p className="font-bold">Reason provided by System Admin:</p>
+                <p className="font-bold">Reason provided by Admin:</p>
                 <p className="mt-1">
                   {profile?.rejection_reason ||
                     "School ID verification could not be completed. Please contact your campus ICT/Admin office."}
@@ -172,7 +172,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
                   Your Front &amp; Back School ID photos have been submitted.
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-amber-900">
-                  A CHMSU System Administrator will visually verify your ID and
+                  Your Campus Admin or the Superadmin will visually verify your ID and
                   activate your account. Until approved, access to campus
                   portals is restricted.
                 </p>
@@ -180,7 +180,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
             ) : (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                 Your account is currently deactivated. Please contact your
-                campus ICT or System Administrator for assistance.
+                campus ICT or Campus Admin for assistance.
               </div>
             )}
 

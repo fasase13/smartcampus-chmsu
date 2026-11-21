@@ -115,7 +115,7 @@ export default function OfficeScannerClient({
       staffDirectory.filter(
         (s) =>
           s.campus_id === forwardCampusId ||
-          s.role === "admin" ||
+          s.role === "superadmin" ||
           s.role === "management"
       ),
     [staffDirectory, forwardCampusId]

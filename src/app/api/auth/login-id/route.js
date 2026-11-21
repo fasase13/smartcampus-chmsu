@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ROLES, getDefaultRouteForRole } from "@/lib/constants";
+import { ADMIN_PORTAL_ROLES, ROLES, getDefaultRouteForRole } from "@/lib/constants";
 
 const ID_NUMBER_REGEX = /^\d{8}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -80,8 +80,8 @@ export async function POST(request) {
       );
     }
 
-    // 4. Reject System Administrator accounts with generic 401 (admin login is /sys-admin only)
-    if (profile.role === ROLES.ADMIN) {
+    // 4. Reject Superadmin & Campus Admin accounts with generic 401 (admin login is /sys-admin only)
+    if (ADMIN_PORTAL_ROLES.includes(profile.role)) {
       await supabase.auth.signOut();
       return NextResponse.json(
         { error: "Invalid credentials." },

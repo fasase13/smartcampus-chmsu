@@ -32,7 +32,7 @@ export default async function ManagementPortalPage() {
     );
   }
 
-  const isAdmin = profile.role === ROLES.ADMIN;
+  const isAdmin = profile.role === ROLES.SUPERADMIN;
 
   const [campusesRes, documentsRes, usersRes, auditLogsRes, unreadAlertsRes] =
     await Promise.all([

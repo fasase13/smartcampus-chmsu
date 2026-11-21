@@ -36,16 +36,28 @@ export default function PortalShell({
 
   const navItems = [
     {
-      href: "/management",
-      label: "Management & Admin",
+      href: "/superadmin",
+      label: "Superadmin Console",
       icon: ShieldCheck,
-      visible: [ROLES.ADMIN, ROLES.MANAGEMENT].includes(profile?.role),
+      visible: profile?.role === ROLES.SUPERADMIN,
+    },
+    {
+      href: `/${campusSlug}/admin`,
+      label: "Campus Admin",
+      icon: ShieldCheck,
+      visible: [ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN].includes(profile?.role),
+    },
+    {
+      href: "/management",
+      label: "Analytics & Management",
+      icon: ShieldCheck,
+      visible: [ROLES.SUPERADMIN, ROLES.MANAGEMENT].includes(profile?.role),
     },
     {
       href: `/${campusSlug}/rmo`,
       label: "RMO Intake & Registry",
       icon: FilePlus2,
-      visible: [ROLES.RMO, ROLES.ADMIN, ROLES.MANAGEMENT].includes(
+      visible: [ROLES.RMO, ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN, ROLES.MANAGEMENT].includes(
         profile?.role
       ),
     },
@@ -58,7 +70,8 @@ export default function PortalShell({
         ROLES.RMO,
         ROLES.FACULTY,
         ROLES.STAFF,
-        ROLES.ADMIN,
+        ROLES.CAMPUS_ADMIN,
+        ROLES.SUPERADMIN,
         ROLES.MANAGEMENT,
       ].includes(profile?.role),
     },
@@ -71,7 +84,8 @@ export default function PortalShell({
         ROLES.STAFF,
         ROLES.DEPT_HEAD,
         ROLES.RMO,
-        ROLES.ADMIN,
+        ROLES.CAMPUS_ADMIN,
+        ROLES.SUPERADMIN,
         ROLES.MANAGEMENT,
       ].includes(profile?.role),
     },

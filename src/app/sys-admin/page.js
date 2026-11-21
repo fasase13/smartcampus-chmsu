@@ -11,11 +11,11 @@ export default async function SysAdminLoginPage() {
 
   if (
     user &&
-    profile?.role === ROLES.ADMIN &&
+    profile?.role === ROLES.SUPERADMIN &&
     profile?.is_active &&
     profile?.approval_status === "approved"
   ) {
-    redirect("/management");
+    redirect("/superadmin");
   }
 
   return (
