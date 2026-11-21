@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import PrivacyTermsGate from "@/components/PrivacyTermsGate";
 import {
   ANNOUNCEMENT_CATEGORIES,
   DOCUMENT_STATUS_META,
@@ -341,6 +342,7 @@ export default function StudentPortalClient({
 
   return (
     <div className="min-h-dvh flex flex-col overflow-x-hidden bg-chmsu-canvas text-slate-900 md:flex-row">
+      <PrivacyTermsGate profile={profile} />
       {/* Desktop Sidebar */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-chmsu-forest/15 bg-chmsu-forest text-white md:flex">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">

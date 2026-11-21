@@ -6,17 +6,17 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
-  CreditCard,
   Eye,
   EyeOff,
   Loader2,
   Lock,
   LogIn,
+  User,
   UserPlus,
 } from "lucide-react";
-import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
 
 const ID_NUMBER_REGEX = /^\d{8}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const QUERY_ERROR_MESSAGES = {
   account_inactive:
@@ -33,7 +33,7 @@ export default function UnifiedLoginCard() {
   const queryErrorCode = searchParams.get("error");
   const nextParam = searchParams.get("next");
 
-  const [idNumber, setIdNumber] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -45,10 +45,13 @@ export default function UnifiedLoginCard() {
     e.preventDefault();
     setErrorMessage("");
 
-    const cleanId = idNumber.trim();
-    if (!ID_NUMBER_REGEX.test(cleanId)) {
+    const cleanIdentifier = identifier.trim();
+    if (
+      !ID_NUMBER_REGEX.test(cleanIdentifier) &&
+      !EMAIL_REGEX.test(cleanIdentifier)
+    ) {
       setErrorMessage(
-        "Please enter a valid 8-digit CHMSU ID Number (e.g., 20230399)."
+        "Enter a valid 8-digit CHMSU ID Number or Email address."
       );
       return;
     }
@@ -59,7 +62,7 @@ export default function UnifiedLoginCard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          idNumber: cleanId,
+          identifier: cleanIdentifier,
           password,
         }),
       });
@@ -67,7 +70,7 @@ export default function UnifiedLoginCard() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok || !payload?.ok) {
-        setErrorMessage(payload?.error || "Invalid ID Number or password.");
+        setErrorMessage(payload?.error || "Invalid credentials.");
         return;
       }
 
@@ -93,9 +96,12 @@ export default function UnifiedLoginCard() {
         !nextParam.startsWith("/sys-admin");
 
       const destination =
-        isSafeNext && payload.campus_slug && nextParam.startsWith(`/${payload.campus_slug}/`)
+        isSafeNext &&
+        payload.campus_slug &&
+        nextParam.startsWith(`/${payload.campus_slug}/`)
           ? nextParam
-          : payload.redirect_to || `/${payload.campus_slug || "talisay"}/student`;
+          : payload.redirect_to ||
+            `/${payload.campus_slug || "talisay"}/student`;
 
       router.push(destination);
       router.refresh();
@@ -133,8 +139,8 @@ export default function UnifiedLoginCard() {
           </div>
         </div>
         <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/90">
-          Your CHMSU campus and role are detected automatically from your
-          8-digit ID Number.
+          Your CHMSU campus and role are detected automatically from your ID
+          Number or Email.
         </p>
       </div>
 
@@ -152,27 +158,22 @@ export default function UnifiedLoginCard() {
 
         <div>
           <label
-            htmlFor="id-number"
+            htmlFor="identifier"
             className="block text-sm font-semibold text-slate-700"
           >
-            8-Digit CHMSU ID Number
+            CHMSU ID Number or Email
           </label>
           <div className="relative mt-1.5">
-            <CreditCard className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
-              id="id-number"
+              id="identifier"
               type="text"
               required
-              inputMode="numeric"
-              maxLength={8}
-              pattern="\d{8}"
               autoComplete="username"
-              value={idNumber}
-              onChange={(e) =>
-                setIdNumber(e.target.value.replace(/\D/g, "").slice(0, 8))
-              }
-              placeholder="20230399"
-              className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3.5 font-mono text-sm font-semibold tracking-widest text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="20230399 or name@gmail.com"
+              className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
             />
           </div>
         </div>
@@ -229,7 +230,7 @@ export default function UnifiedLoginCard() {
           )}
         </button>
 
-        <div className="flex flex-col items-center gap-2.5 border-t border-chmsu-border pt-4 text-center text-xs text-slate-500">
+        <div className="flex flex-col items-center gap-2 border-t border-chmsu-border pt-4 text-center text-xs text-slate-500">
           <div className="flex flex-wrap items-center justify-center gap-1.5 text-sm">
             <span className="text-slate-600">New to SmartCampus?</span>
             <Link
@@ -240,7 +241,6 @@ export default function UnifiedLoginCard() {
               Register Account
             </Link>
           </div>
-          <PrivacyNoticeModal />
         </div>
       </form>
     </div>

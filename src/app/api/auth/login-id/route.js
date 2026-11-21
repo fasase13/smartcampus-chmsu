@@ -3,45 +3,62 @@ import { createClient } from "@/lib/supabase/server";
 import { ROLES, getDefaultRouteForRole } from "@/lib/constants";
 
 const ID_NUMBER_REGEX = /^\d{8}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function POST(request) {
   try {
     const body = await request.json().catch(() => null);
-    const idNumber = String(body?.idNumber ?? "").trim();
+    const identifier = String(body?.identifier ?? body?.idNumber ?? "").trim();
     const password = String(body?.password ?? "");
 
-    if (!ID_NUMBER_REGEX.test(idNumber) || !password) {
+    if (!password) {
       return NextResponse.json(
-        { error: "Invalid ID Number or password." },
+        { error: "Invalid credentials." },
         { status: 401 }
+      );
+    }
+
+    const isIdNumber = ID_NUMBER_REGEX.test(identifier);
+    const isEmail = EMAIL_REGEX.test(identifier);
+
+    if (!isIdNumber && !isEmail) {
+      return NextResponse.json(
+        { error: "Enter a valid 8-digit CHMSU ID Number or Email address." },
+        { status: 400 }
       );
     }
 
     const supabase = await createClient();
 
-    // 1. Server-side lookup of stored email by 8-digit ID (never returned to client)
-    const { data: lookedUpEmail, error: lookupError } = await supabase.rpc(
-      "lookup_email_for_id_login",
-      { p_id_number: idNumber }
-    );
-
-    if (lookupError || !lookedUpEmail) {
-      return NextResponse.json(
-        { error: "Invalid ID Number or password." },
-        { status: 401 }
+    // 1. Resolve email either from 8-digit ID lookup or directly from user input
+    let resolvedEmail = "";
+    if (isIdNumber) {
+      const { data: lookedUpEmail, error: lookupError } = await supabase.rpc(
+        "lookup_email_for_id_login",
+        { p_id_number: identifier }
       );
+
+      if (lookupError || !lookedUpEmail) {
+        return NextResponse.json(
+          { error: "Invalid credentials." },
+          { status: 401 }
+        );
+      }
+      resolvedEmail = lookedUpEmail;
+    } else {
+      resolvedEmail = identifier.toLowerCase();
     }
 
     // 2. Authenticate on the server so SSR session cookies are set automatically
     const { data: authData, error: authError } =
       await supabase.auth.signInWithPassword({
-        email: lookedUpEmail,
+        email: resolvedEmail,
         password,
       });
 
     if (authError || !authData?.user) {
       return NextResponse.json(
-        { error: "Invalid ID Number or password." },
+        { error: "Invalid credentials." },
         { status: 401 }
       );
     }
@@ -58,16 +75,16 @@ export async function POST(request) {
     if (profileError || !profile) {
       await supabase.auth.signOut();
       return NextResponse.json(
-        { error: "Invalid ID Number or password." },
+        { error: "Invalid credentials." },
         { status: 401 }
       );
     }
 
-    // 4. Reject System Administrator accounts with generic 401 to prevent probing
+    // 4. Reject System Administrator accounts with generic 401 (admin login is /sys-admin only)
     if (profile.role === ROLES.ADMIN) {
       await supabase.auth.signOut();
       return NextResponse.json(
-        { error: "Invalid ID Number or password." },
+        { error: "Invalid credentials." },
         { status: 401 }
       );
     }
@@ -92,7 +109,7 @@ export async function POST(request) {
           entity_type: "profile",
           entity_id: profile.id,
           metadata: {
-            login_method: "id_number",
+            login_method: isIdNumber ? "id_number" : "email",
             campus_slug: campusSlug,
           },
         });

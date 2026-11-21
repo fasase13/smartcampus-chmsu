@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLE_LABELS, ROLES } from "@/lib/constants";
+import PrivacyTermsGate from "@/components/PrivacyTermsGate";
 
 export default function PortalShell({
   profile,
@@ -104,6 +105,7 @@ export default function PortalShell({
 
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas lg:flex-row">
+      <PrivacyTermsGate profile={profile} />
       {/* Desktop Sidebar */}
       <aside className="no-print hidden w-64 shrink-0 flex-col border-r border-chmsu-forest/15 bg-chmsu-forest text-white lg:flex">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">

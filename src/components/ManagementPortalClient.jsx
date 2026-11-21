@@ -39,6 +39,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import PrivacyTermsGate from "@/components/PrivacyTermsGate";
 import {
   ALL_ROLES,
   DOCUMENT_STATUS_META,
@@ -927,6 +928,7 @@ export default function ManagementPortalClient({
 
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
+      <PrivacyTermsGate profile={profile} />
       {/* Sidebar (hidden on print) */}
       <aside className="no-print flex w-full shrink-0 flex-col border-b border-chmsu-navy/20 bg-chmsu-navy text-white lg:w-64 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
