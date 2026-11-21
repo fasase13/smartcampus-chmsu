@@ -8,22 +8,16 @@ export default async function CampusRegisterPage({ params }) {
   const { campus: campusSlug } = await params;
   const supabase = await createClient();
 
-  const { data: campuses } = await supabase
+  const { data: campus, error } = await supabase
     .from("campuses")
-    .select("id, code, slug, name, address, is_main")
+    .select("slug")
+    .eq("slug", campusSlug)
     .eq("is_active", true)
-    .order("is_main", { ascending: false })
-    .order("name", { ascending: true });
+    .single();
 
-  const matched = (campuses ?? []).find((c) => c.slug === campusSlug);
-  if (!matched) {
+  if (error || !campus) {
     notFound();
   }
 
-  return (
-    <RegistrationForm
-      campuses={campuses ?? []}
-      preselectedSlug={matched.slug}
-    />
-  );
+  return <RegistrationForm preselectedSlug={campus.slug} />;
 }

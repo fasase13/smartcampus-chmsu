@@ -218,7 +218,7 @@ export default function ManagementPortalClient({
     const { data } = await supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, id_front_path, id_back_path, rejection_reason, reviewed_by, reviewed_at, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, reviewed_by, reviewed_at, department, job_title, office_location, show_on_kiosk, is_active, created_at"
       )
       .order("created_at", { ascending: false });
     if (data) setUsers(data);
@@ -575,11 +575,13 @@ export default function ManagementPortalClient({
     );
   }
 
-  // Pending Registrations Queue (Admin only)
+  // Pending Registrations Queue (Admin only — strictly completed Step 3 submissions)
   const pendingRegistrations = useMemo(() => {
     if (!isAdmin) return [];
     return users
-      .filter((u) => u.approval_status === "pending")
+      .filter(
+        (u) => u.approval_status === "pending" && u.profile_completed === true
+      )
       .sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -876,7 +878,7 @@ export default function ManagementPortalClient({
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      router.push("/login/management");
+      router.push("/");
       router.refresh();
     } finally {
       setSigningOut(false);

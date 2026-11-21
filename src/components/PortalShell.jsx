@@ -95,7 +95,7 @@ export default function PortalShell({
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      router.push(`/login/${campusSlug}`);
+      router.push("/");
       router.refresh();
     } finally {
       setSigningOut(false);

@@ -15,11 +15,11 @@ export default async function FacultyPortalPage({ params }) {
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
-    redirect(`/login/${campusSlug}?next=/${campusSlug}/faculty`);
+    redirect(`/?next=/${campusSlug}/faculty`);
   }
 
   if (!profile) {
-    redirect(`/login/${campusSlug}?error=account_inactive`);
+    redirect("/?error=account_inactive");
   }
 
   if (!profile.is_active || profile.approval_status !== "approved") {

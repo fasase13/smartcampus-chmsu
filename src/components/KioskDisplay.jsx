@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import {
   AlertTriangle,
   Calendar,
@@ -626,28 +625,18 @@ export default function KioskDisplay({
         </section>
       </main>
 
-      {/* RA 10173 Privacy-Compliant Kiosk Footer */}
+      {/* RA 10173 Privacy-Compliant Standalone Kiosk Footer */}
       <footer className="shrink-0 border-t border-chmsu-forest/15 bg-chmsu-navy px-5 py-2.5 text-white">
         <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm">
           <p className="font-medium">
             <span className="font-bold text-chmsu-gold">Privacy Notice (RA 10173):</span>{" "}
-            This public kiosk displays announcements, schedules, and faculty
-            availability only. For personal document tracking, please sign in on
-            your own device via the{" "}
-            <Link
-              href={`/login/${campus.slug}`}
-              className="font-bold text-chmsu-gold underline underline-offset-2 hover:text-white"
-            >
-              Student Web Portal
-            </Link>
-            .
+            This standalone public campus kiosk displays official announcements,
+            schedules, and faculty availability only. For personal document
+            tracking, please sign in on your own device.
           </p>
-          <Link
-            href="/"
-            className="text-xs font-semibold text-white/80 hover:text-chmsu-gold"
-          >
-            Switch Campus
-          </Link>
+          <span className="text-xs font-semibold text-white/80">
+            CHMSU {campus.name} ({campus.code})
+          </span>
         </div>
       </footer>
     </div>

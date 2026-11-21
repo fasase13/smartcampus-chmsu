@@ -302,7 +302,7 @@ export default function StudentPortalClient({
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      router.push(`/login/${campus.slug}`);
+      router.push("/");
       router.refresh();
     } finally {
       setSigningOut(false);

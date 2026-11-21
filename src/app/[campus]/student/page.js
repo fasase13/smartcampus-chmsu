@@ -14,11 +14,11 @@ export default async function StudentPortalPage({ params }) {
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
-    redirect(`/login/${campusSlug}?next=/${campusSlug}/student`);
+    redirect(`/?next=/${campusSlug}/student`);
   }
 
   if (!profile) {
-    redirect(`/login/${campusSlug}?error=account_inactive`);
+    redirect("/?error=account_inactive");
   }
 
   if (!profile.is_active || profile.approval_status !== "approved") {

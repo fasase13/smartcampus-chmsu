@@ -15,11 +15,11 @@ export default async function RmoPortalPage({ params }) {
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
-    redirect(`/login/${campusSlug}?next=/${campusSlug}/rmo`);
+    redirect(`/?next=/${campusSlug}/rmo`);
   }
 
   if (!profile) {
-    redirect(`/login/${campusSlug}?error=account_inactive`);
+    redirect("/?error=account_inactive");
   }
 
   if (!profile.is_active || profile.approval_status !== "approved") {

@@ -50,7 +50,7 @@ export async function getAuthenticatedProfile() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, rejection_reason, id_front_path, id_back_path, department, office_location, job_title, availability_status, availability_note, show_on_kiosk, is_active, campuses:campus_id(id, code, slug, name, is_main)"
+      "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, rejection_reason, id_front_path, id_back_path, department, office_location, job_title, availability_status, availability_note, show_on_kiosk, is_active, campuses:campus_id(id, code, slug, name, is_main)"
     )
     .eq("id", user.id)
     .single();

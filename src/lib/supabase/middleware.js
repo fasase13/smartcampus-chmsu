@@ -55,17 +55,82 @@ export async function updateSession(request) {
     return supabaseResponse;
   }
 
-  // Self-registration routes: /register and /register/[campus]
-  if (segments[0] === "register") {
+  // Dedicated unlinked System Administrator login route: /sys-admin
+  if (segments[0] === "sys-admin") {
     if (user) {
       const { data: profile } = await supabase
         .from("profiles")
-        .select("role, is_active, approval_status, campuses:campus_id(slug)")
+        .select("role, is_active, approval_status")
+        .eq("id", user.id)
+        .single();
+
+      if (
+        profile?.role === "admin" &&
+        profile?.is_active &&
+        profile?.approval_status === "approved"
+      ) {
+        const mgmtUrl = request.nextUrl.clone();
+        mgmtUrl.pathname = "/management";
+        mgmtUrl.search = "";
+        return redirectWithCookies(mgmtUrl, supabaseResponse);
+      }
+    }
+    return supabaseResponse;
+  }
+
+  // Self-registration routes: /register, /register/[campus], and /register/complete
+  if (segments[0] === "register") {
+    const isCompleteStep = segments[1] === "complete";
+
+    if (isCompleteStep) {
+      if (!user) {
+        const regUrl = request.nextUrl.clone();
+        regUrl.pathname = "/register";
+        regUrl.search = "";
+        return redirectWithCookies(regUrl, supabaseResponse);
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, is_active, approval_status, profile_completed, campuses:campus_id(slug)")
+        .eq("id", user.id)
+        .single();
+
+      if (profile && profile.profile_completed === false) {
+        return supabaseResponse;
+      }
+
+      const redirectUrl = request.nextUrl.clone();
+      if (profile?.is_active && profile?.approval_status === "approved") {
+        const assignedSlug = profile.campuses?.slug ?? "talisay";
+        redirectUrl.pathname = getDefaultRouteForRole(profile.role, assignedSlug);
+        redirectUrl.search = "";
+        return redirectWithCookies(redirectUrl, supabaseResponse);
+      }
+
+      redirectUrl.pathname = "/pending-approval";
+      redirectUrl.search = "";
+      return redirectWithCookies(redirectUrl, supabaseResponse);
+    }
+
+    if (user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, is_active, approval_status, profile_completed, campuses:campus_id(slug)")
         .eq("id", user.id)
         .single();
 
       if (profile) {
         const redirectUrl = request.nextUrl.clone();
+        if (profile.profile_completed === false) {
+          redirectUrl.pathname = "/register/complete";
+          redirectUrl.search =
+            segments[1] && CAMPUS_SLUGS.includes(segments[1])
+              ? `?campus=${encodeURIComponent(segments[1])}`
+              : "";
+          return redirectWithCookies(redirectUrl, supabaseResponse);
+        }
+
         if (!profile.is_active || profile.approval_status !== "approved") {
           redirectUrl.pathname = "/pending-approval";
           redirectUrl.search = "";
@@ -92,9 +157,16 @@ export async function updateSession(request) {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, is_active, approval_status, campuses:campus_id(slug)")
+      .select("role, is_active, approval_status, profile_completed, campuses:campus_id(slug)")
       .eq("id", user.id)
       .single();
+
+    if (profile && profile.profile_completed === false) {
+      const completeUrl = request.nextUrl.clone();
+      completeUrl.pathname = "/register/complete";
+      completeUrl.search = "";
+      return redirectWithCookies(completeUrl, supabaseResponse);
+    }
 
     if (profile?.is_active && profile?.approval_status === "approved") {
       const assignedSlug = profile.campuses?.slug ?? "talisay";
@@ -107,60 +179,41 @@ export async function updateSession(request) {
     return supabaseResponse;
   }
 
-  // Dedicated campus & management login routes: /login/[campus]
+  // Legacy /login/* routes redirect cleanly to the unified homepage login (/)
   if (segments[0] === "login") {
-    if (user && !searchParams.get("error") && !searchParams.get("switch")) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, is_active, approval_status, campuses:campus_id(slug)")
-        .eq("id", user.id)
-        .single();
-
-      if (profile && (!profile.is_active || profile.approval_status !== "approved")) {
-        const pendingUrl = request.nextUrl.clone();
-        pendingUrl.pathname = "/pending-approval";
-        pendingUrl.search = "";
-        return redirectWithCookies(pendingUrl, supabaseResponse);
-      }
-
-      if (profile?.is_active && profile?.approval_status === "approved") {
-        const assignedSlug = profile.campuses?.slug ?? "talisay";
-        const requestedSlug = segments[1];
-        const targetCampus =
-          CROSS_CAMPUS_ROLES.includes(profile.role) &&
-          CAMPUS_SLUGS.includes(requestedSlug)
-            ? requestedSlug
-            : assignedSlug;
-
-        const redirectUrl = request.nextUrl.clone();
-        redirectUrl.pathname = getDefaultRouteForRole(profile.role, targetCampus);
-        redirectUrl.search = "";
-        return redirectWithCookies(redirectUrl, supabaseResponse);
-      }
-    }
-    return supabaseResponse;
+    const homeUrl = request.nextUrl.clone();
+    homeUrl.pathname = "/";
+    homeUrl.search = "";
+    return redirectWithCookies(homeUrl, supabaseResponse);
   }
 
   // Cross-campus Institutional Management / System Admin route: /management
   if (segments[0] === "management") {
     if (!user) {
       const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/login/management";
+      loginUrl.pathname = "/";
       loginUrl.search = `?next=${encodeURIComponent(pathname)}`;
       return redirectWithCookies(loginUrl, supabaseResponse);
     }
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("role, is_active, approval_status, campuses:campus_id(slug)")
+      .select("role, is_active, approval_status, profile_completed, campuses:campus_id(slug)")
       .eq("id", user.id)
       .single();
 
     if (profileError || !profile) {
       const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = "/login/management";
+      loginUrl.pathname = "/";
       loginUrl.search = "?error=account_inactive";
       return redirectWithCookies(loginUrl, supabaseResponse);
+    }
+
+    if (profile.profile_completed === false) {
+      const completeUrl = request.nextUrl.clone();
+      completeUrl.pathname = "/register/complete";
+      completeUrl.search = "";
+      return redirectWithCookies(completeUrl, supabaseResponse);
     }
 
     if (!profile.is_active || profile.approval_status !== "approved") {
@@ -205,23 +258,30 @@ export async function updateSession(request) {
   // 1. Require authenticated user
   if (!user) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = `/login/${campusSlug}`;
+    loginUrl.pathname = "/";
     loginUrl.search = `?next=${encodeURIComponent(pathname)}`;
     return redirectWithCookies(loginUrl, supabaseResponse);
   }
 
-  // 2. Fetch authoritative profile (role, campus, active & approval status)
+  // 2. Fetch authoritative profile (role, campus, completion, active & approval status)
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("role, is_active, approval_status, campus_id, campuses:campus_id(slug)")
+    .select("role, is_active, approval_status, profile_completed, campus_id, campuses:campus_id(slug)")
     .eq("id", user.id)
     .single();
 
   if (profileError || !profile) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = `/login/${campusSlug}`;
+    loginUrl.pathname = "/";
     loginUrl.search = "?error=account_inactive";
     return redirectWithCookies(loginUrl, supabaseResponse);
+  }
+
+  if (profile.profile_completed === false) {
+    const completeUrl = request.nextUrl.clone();
+    completeUrl.pathname = "/register/complete";
+    completeUrl.search = "";
+    return redirectWithCookies(completeUrl, supabaseResponse);
   }
 
   if (!profile.is_active || profile.approval_status !== "approved") {

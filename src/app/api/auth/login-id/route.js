@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { CROSS_CAMPUS_ROLES, ROLES } from "@/lib/constants";
+import { ROLES, getDefaultRouteForRole } from "@/lib/constants";
 
 const ID_NUMBER_REGEX = /^\d{8}$/;
 
@@ -9,7 +9,6 @@ export async function POST(request) {
     const body = await request.json().catch(() => null);
     const idNumber = String(body?.idNumber ?? "").trim();
     const password = String(body?.password ?? "");
-    const campusSlug = String(body?.campusSlug ?? "").trim();
 
     if (!ID_NUMBER_REGEX.test(idNumber) || !password) {
       return NextResponse.json(
@@ -47,11 +46,11 @@ export async function POST(request) {
       );
     }
 
-    // 3. Fetch authoritative profile (never expose email in response)
+    // 3. Automatically detect assigned campus, role, completion, and approval status
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select(
-        "id, role, campus_id, approval_status, is_active, campuses:campus_id(id, slug, name)"
+        "id, role, campus_id, profile_completed, approval_status, is_active, campuses:campus_id(id, slug, name)"
       )
       .eq("id", authData.user.id)
       .single();
@@ -59,55 +58,31 @@ export async function POST(request) {
     if (profileError || !profile) {
       await supabase.auth.signOut();
       return NextResponse.json(
-        {
-          error:
-            "No SmartCampus profile found for this account. Contact your campus ICT/Admin office.",
-        },
-        { status: 403 }
+        { error: "Invalid ID Number or password." },
+        { status: 401 }
       );
     }
 
-    // 4. Reject System Administrators on the ID login endpoint
+    // 4. Reject System Administrator accounts with generic 401 to prevent probing
     if (profile.role === ROLES.ADMIN) {
       await supabase.auth.signOut();
       return NextResponse.json(
-        { error: "System Administrators must use the Admin Login view." },
-        { status: 403 }
+        { error: "Invalid ID Number or password." },
+        { status: 401 }
       );
     }
 
-    const assignedSlug = profile.campuses?.slug ?? "talisay";
-    const assignedName = profile.campuses?.name ?? "your assigned campus";
-    const isCrossCampusRole = CROSS_CAMPUS_ROLES.includes(profile.role);
+    const campusSlug = profile.campuses?.slug ?? "talisay";
 
-    // 5. Enforce campus / management portal boundary for approved active users
-    if (profile.approval_status === "approved" && profile.is_active) {
-      if (campusSlug === "management" && !isCrossCampusRole) {
-        await supabase.auth.signOut();
-        return NextResponse.json(
-          {
-            error: `This portal is restricted to Institutional Management and System Administrators. Please sign in through the CHMSU ${assignedName} Campus Portal instead.`,
-          },
-          { status: 403 }
-        );
-      }
+    let redirectTo;
+    if (profile.profile_completed === false) {
+      redirectTo = "/register/complete";
+    } else if (profile.approval_status !== "approved" || !profile.is_active) {
+      redirectTo = "/pending-approval";
+    } else {
+      redirectTo = getDefaultRouteForRole(profile.role, campusSlug);
 
-      if (
-        campusSlug &&
-        campusSlug !== "management" &&
-        !isCrossCampusRole &&
-        assignedSlug !== campusSlug
-      ) {
-        await supabase.auth.signOut();
-        return NextResponse.json(
-          {
-            error: `Access denied for this campus. Your account is assigned to CHMSU ${assignedName}. Please use the ${assignedName} campus login portal.`,
-          },
-          { status: 403 }
-        );
-      }
-
-      // Best-effort audit log for non-student logins
+      // Best-effort audit log for approved non-student logins
       if (profile.role !== ROLES.STUDENT && profile.campus_id) {
         await supabase.from("audit_logs").insert({
           campus_id: profile.campus_id,
@@ -118,7 +93,7 @@ export async function POST(request) {
           entity_id: profile.id,
           metadata: {
             login_method: "id_number",
-            campus_slug: campusSlug || assignedSlug,
+            campus_slug: campusSlug,
           },
         });
       }
@@ -128,9 +103,11 @@ export async function POST(request) {
     return NextResponse.json({
       ok: true,
       role: profile.role,
-      campus_slug: assignedSlug,
+      campus_slug: campusSlug,
+      profile_completed: profile.profile_completed,
       approval_status: profile.approval_status,
       is_active: profile.is_active,
+      redirect_to: redirectTo,
     });
   } catch {
     return NextResponse.json(

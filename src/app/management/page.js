@@ -13,11 +13,11 @@ export default async function ManagementPortalPage() {
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
-    redirect("/login/management?next=/management");
+    redirect("/?next=/management");
   }
 
   if (!profile) {
-    redirect("/login/management?error=account_inactive");
+    redirect("/?error=account_inactive");
   }
 
   if (!profile.is_active || profile.approval_status !== "approved") {
@@ -53,7 +53,7 @@ export default async function ManagementPortalPage() {
         ? supabase
             .from("profiles")
             .select(
-              "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, id_front_path, id_back_path, rejection_reason, reviewed_by, reviewed_at, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+              "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, reviewed_by, reviewed_at, department, job_title, office_location, show_on_kiosk, is_active, created_at"
             )
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] }),

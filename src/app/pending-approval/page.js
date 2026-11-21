@@ -12,6 +12,10 @@ export default async function PendingApprovalPage() {
     redirect("/");
   }
 
+  if (profile && profile.profile_completed === false) {
+    redirect("/register/complete");
+  }
+
   if (profile?.is_active && profile?.approval_status === "approved") {
     const campusSlug = profile.campuses?.slug ?? "talisay";
     redirect(getDefaultRouteForRole(profile.role, campusSlug));
