@@ -36,6 +36,7 @@ import PortalSidebar, {
   usePortalSidebarState,
 } from "@/components/PortalSidebar";
 import OfficeScannerClient from "@/components/OfficeScannerClient";
+import useUnreadAnnouncements from "@/hooks/useUnreadAnnouncements";
 import {
   ANNOUNCEMENT_CATEGORIES,
   ANNOUNCEMENT_PRIORITIES,
@@ -262,8 +263,7 @@ export default function FacultyPortalClient({
 
       showFeedback(
         "success",
-        `Availability updated to "${getAvailabilityMeta(nextStatus).label}"${
-          nextKiosk ? " — synced live to the campus kiosk." : "."
+        `Availability updated to "${getAvailabilityMeta(nextStatus).label}"${nextKiosk ? " — synced live to the campus kiosk." : "."
         }`
       );
     } finally {
@@ -528,6 +528,13 @@ export default function FacultyPortalClient({
     [announcements, profile.id]
   );
 
+  // Track unseen announcements (excludes own posts, auto-clears when viewing tab)
+  const { unreadCount: unreadAnnouncementsCount } = useUnreadAnnouncements({
+    userId: profile.id,
+    announcements: activeFeedAnnouncements,
+    isViewingAnnouncements: activeTab === "announcements",
+  });
+
   const currentStatusMeta = getAvailabilityMeta(availabilityStatus);
 
   const navItems = [
@@ -540,7 +547,7 @@ export default function FacultyPortalClient({
       id: "announcements",
       label: "Campus Announcements",
       icon: Newspaper,
-      badge: activeFeedAnnouncements.length,
+      badge: unreadAnnouncementsCount,
     },
     {
       id: "manage",
@@ -573,9 +580,8 @@ export default function FacultyPortalClient({
 
       {/* Main Content Wrapper */}
       <div
-        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${
-          collapsed ? "lg:pl-20" : "lg:pl-64"
-        }`}
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${collapsed ? "lg:pl-20" : "lg:pl-64"
+          }`}
       >
         {/* Sticky Top Header Bar */}
         <header className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
@@ -618,11 +624,10 @@ export default function FacultyPortalClient({
           {feedback && (
             <div
               role="status"
-              className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-                feedback.type === "error"
+              className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${feedback.type === "error"
                   ? "border-red-200 bg-red-50 text-red-800"
                   : "border-emerald-200 bg-emerald-50 text-emerald-900"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 {feedback.type === "error" ? (
@@ -683,352 +688,350 @@ export default function FacultyPortalClient({
 
               {/* Side-by-Side Grid: Live Availability Card + Announcement Composer */}
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        {/* 1. Live Availability Control Card */}
-        <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
-                <Radio className="h-5 w-5 text-chmsu-green" />
-                Live Availability Control
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                One-click status updates sync immediately to the campus kiosk.
-              </p>
-            </div>
-          </div>
+                {/* 1. Live Availability Control Card */}
+                <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
+                        <Radio className="h-5 w-5 text-chmsu-green" />
+                        Live Availability Control
+                      </h2>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        One-click status updates sync immediately to the campus kiosk.
+                      </p>
+                    </div>
+                  </div>
 
-          {/* One-Click Status Buttons */}
-          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
-            {AVAILABILITY_STATUSES.map((st) => {
-              const isSelected = availabilityStatus === st.value;
-              return (
-                <button
-                  key={st.value}
-                  type="button"
-                  disabled={savingAvailability}
-                  onClick={() =>
-                    updateAvailability({ availability_status: st.value })
-                  }
-                  className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${
-                    isSelected
-                      ? "border-chmsu-forest bg-chmsu-forest text-white shadow-xs"
-                      : "border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-green hover:bg-white"
-                  }`}
-                >
-                  <span
-                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                      isSelected ? "bg-chmsu-gold" : st.dotClass
-                    }`}
-                  />
-                  <span>{st.label}</span>
-                </button>
-              );
-            })}
-          </div>
+                  {/* One-Click Status Buttons */}
+                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
+                    {AVAILABILITY_STATUSES.map((st) => {
+                      const isSelected = availabilityStatus === st.value;
+                      return (
+                        <button
+                          key={st.value}
+                          type="button"
+                          disabled={savingAvailability}
+                          onClick={() =>
+                            updateAvailability({ availability_status: st.value })
+                          }
+                          className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${isSelected
+                              ? "border-chmsu-forest bg-chmsu-forest text-white shadow-xs"
+                              : "border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-green hover:bg-white"
+                            }`}
+                        >
+                          <span
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${isSelected ? "bg-chmsu-gold" : st.dotClass
+                              }`}
+                          />
+                          <span>{st.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
 
-          {/* Office Location & Availability Note */}
-          <div className="mt-5 space-y-3.5 border-t border-chmsu-border pt-4">
-            <div>
-              <label
-                htmlFor="office_location"
-                className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-              >
-                Office / Room Location
-              </label>
-              <div className="relative mt-1">
-                <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="office_location"
-                  type="text"
-                  value={officeLocation}
-                  onChange={(e) => setOfficeLocation(e.target.value)}
-                  placeholder="e.g., CCS Faculty Room 204"
-                  className="w-full rounded-xl border border-chmsu-border bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
-                />
-              </div>
-            </div>
+                  {/* Office Location & Availability Note */}
+                  <div className="mt-5 space-y-3.5 border-t border-chmsu-border pt-4">
+                    <div>
+                      <label
+                        htmlFor="office_location"
+                        className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                      >
+                        Office / Room Location
+                      </label>
+                      <div className="relative mt-1">
+                        <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <input
+                          id="office_location"
+                          type="text"
+                          value={officeLocation}
+                          onChange={(e) => setOfficeLocation(e.target.value)}
+                          placeholder="e.g., CCS Faculty Room 204"
+                          className="w-full rounded-xl border border-chmsu-border bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                        />
+                      </div>
+                    </div>
 
-            <div>
-              <label
-                htmlFor="availability_note"
-                className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-              >
-                Public Availability Note (Max 200 chars)
-              </label>
-              <input
-                id="availability_note"
-                type="text"
-                maxLength={200}
-                value={availabilityNote}
-                onChange={(e) => setAvailabilityNote(e.target.value)}
-                placeholder="e.g., Consultation hours 1:00 PM – 4:00 PM"
-                className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
-              />
-            </div>
+                    <div>
+                      <label
+                        htmlFor="availability_note"
+                        className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                      >
+                        Public Availability Note (Max 200 chars)
+                      </label>
+                      <input
+                        id="availability_note"
+                        type="text"
+                        maxLength={200}
+                        value={availabilityNote}
+                        onChange={(e) => setAvailabilityNote(e.target.value)}
+                        placeholder="e.g., Consultation hours 1:00 PM – 4:00 PM"
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                      />
+                    </div>
 
-            {/* Show on Kiosk Toggle */}
-            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3.5 py-2.5">
-              <div>
-                <p className="text-sm font-semibold text-slate-800">
-                  Show on Public Kiosk
-                </p>
-                <p className="text-xs text-slate-500">
-                  Displays only your name, office, and live status (no email/PII).
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                checked={showOnKiosk}
-                disabled={savingAvailability}
-                onChange={(e) =>
-                  updateAvailability({ show_on_kiosk: e.target.checked })
-                }
-                className="h-5 w-5 rounded border-slate-300 accent-chmsu-green"
-              />
-            </label>
+                    {/* Show on Kiosk Toggle */}
+                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3.5 py-2.5">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800">
+                          Show on Public Kiosk
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Displays only your name, office, and live status (no email/PII).
+                        </p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={showOnKiosk}
+                        disabled={savingAvailability}
+                        onChange={(e) =>
+                          updateAvailability({ show_on_kiosk: e.target.checked })
+                        }
+                        className="h-5 w-5 rounded border-slate-300 accent-chmsu-green"
+                      />
+                    </label>
 
-            <button
-              type="button"
-              disabled={savingAvailability}
-              onClick={() => updateAvailability()}
-              className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-chmsu-navy px-4 py-2 text-sm font-semibold text-white transition hover:bg-chmsu-forest disabled:opacity-60"
-            >
-              {savingAvailability ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-              Save Office &amp; Note
-            </button>
-          </div>
-        </section>
+                    <button
+                      type="button"
+                      disabled={savingAvailability}
+                      onClick={() => updateAvailability()}
+                      className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-chmsu-navy px-4 py-2 text-sm font-semibold text-white transition hover:bg-chmsu-forest disabled:opacity-60"
+                    >
+                      {savingAvailability ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+                      Save Office &amp; Note
+                    </button>
+                  </div>
+                </section>
 
-        {/* 2. Announcement Composer */}
-        <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-7">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
-                <Plus className="h-5 w-5 text-chmsu-green" />
-                {editingId ? "Edit Announcement" : "Announcement Composer"}
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Publish notices, calendar events, or advisories for CHMSU{" "}
-                {campus.name}.
-              </p>
-            </div>
-            {editingId && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingId(null);
-                  setForm(EMPTY_FORM);
-                }}
-                className="rounded-lg border border-chmsu-border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Cancel Edit
-              </button>
-            )}
-          </div>
+                {/* 2. Announcement Composer */}
+                <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-7">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
+                        <Plus className="h-5 w-5 text-chmsu-green" />
+                        {editingId ? "Edit Announcement" : "Announcement Composer"}
+                      </h2>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Publish notices, calendar events, or advisories for CHMSU{" "}
+                        {campus.name}.
+                      </p>
+                    </div>
+                    {editingId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingId(null);
+                          setForm(EMPTY_FORM);
+                        }}
+                        className="rounded-lg border border-chmsu-border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
+                  </div>
 
-          <form onSubmit={handleAnnouncementSubmit} className="mt-4 space-y-4">
-            <div>
-              <label
-                htmlFor="ann_title"
-                className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-              >
-                Title *
-              </label>
-              <input
-                id="ann_title"
-                type="text"
-                required
-                minLength={3}
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                placeholder="e.g., Midterm Examination Schedule — 1st Semester"
-                className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
-              />
-            </div>
+                  <form onSubmit={handleAnnouncementSubmit} className="mt-4 space-y-4">
+                    <div>
+                      <label
+                        htmlFor="ann_title"
+                        className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                      >
+                        Title *
+                      </label>
+                      <input
+                        id="ann_title"
+                        type="text"
+                        required
+                        minLength={3}
+                        value={form.title}
+                        onChange={(e) => setForm({ ...form, title: e.target.value })}
+                        placeholder="e.g., Midterm Examination Schedule — 1st Semester"
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                      />
+                    </div>
 
-            <div>
-              <label
-                htmlFor="ann_body"
-                className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-              >
-                Message Body *
-              </label>
-              <textarea
-                id="ann_body"
-                required
-                minLength={3}
-                rows={4}
-                value={form.body}
-                onChange={(e) => setForm({ ...form, body: e.target.value })}
-                placeholder="Write clear, concise details for students and visitors..."
-                className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
-              />
-            </div>
+                    <div>
+                      <label
+                        htmlFor="ann_body"
+                        className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                      >
+                        Message Body *
+                      </label>
+                      <textarea
+                        id="ann_body"
+                        required
+                        minLength={3}
+                        rows={4}
+                        value={form.body}
+                        onChange={(e) => setForm({ ...form, body: e.target.value })}
+                        placeholder="Write clear, concise details for students and visitors..."
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                      />
+                    </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label
-                  htmlFor="ann_category"
-                  className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                >
-                  Category
-                </label>
-                <select
-                  id="ann_category"
-                  value={form.category}
-                  onChange={(e) =>
-                    setForm({ ...form, category: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
-                >
-                  {ANNOUNCEMENT_CATEGORIES.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label
+                          htmlFor="ann_category"
+                          className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          Category
+                        </label>
+                        <select
+                          id="ann_category"
+                          value={form.category}
+                          onChange={(e) =>
+                            setForm({ ...form, category: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
+                        >
+                          {ANNOUNCEMENT_CATEGORIES.map((c) => (
+                            <option key={c.value} value={c.value}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-              <div>
-                <label
-                  htmlFor="ann_priority"
-                  className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                >
-                  Priority
-                </label>
-                <select
-                  id="ann_priority"
-                  value={form.priority}
-                  onChange={(e) =>
-                    setForm({ ...form, priority: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
-                >
-                  {ANNOUNCEMENT_PRIORITIES.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+                      <div>
+                        <label
+                          htmlFor="ann_priority"
+                          className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          Priority
+                        </label>
+                        <select
+                          id="ann_priority"
+                          value={form.priority}
+                          onChange={(e) =>
+                            setForm({ ...form, priority: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
+                        >
+                          {ANNOUNCEMENT_PRIORITIES.map((p) => (
+                            <option key={p.value} value={p.value}>
+                              {p.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div>
-                <label
-                  htmlFor="event_start"
-                  className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                >
-                  Event Start
-                </label>
-                <input
-                  id="event_start"
-                  type="datetime-local"
-                  value={form.event_start_at}
-                  onChange={(e) =>
-                    setForm({ ...form, event_start_at: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-chmsu-green"
-                />
-              </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div>
+                        <label
+                          htmlFor="event_start"
+                          className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          Event Start
+                        </label>
+                        <input
+                          id="event_start"
+                          type="datetime-local"
+                          value={form.event_start_at}
+                          onChange={(e) =>
+                            setForm({ ...form, event_start_at: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-chmsu-green"
+                        />
+                      </div>
 
-              <div>
-                <label
-                  htmlFor="event_end"
-                  className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                >
-                  Event End
-                </label>
-                <input
-                  id="event_end"
-                  type="datetime-local"
-                  value={form.event_end_at}
-                  onChange={(e) =>
-                    setForm({ ...form, event_end_at: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-chmsu-green"
-                />
-              </div>
+                      <div>
+                        <label
+                          htmlFor="event_end"
+                          className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          Event End
+                        </label>
+                        <input
+                          id="event_end"
+                          type="datetime-local"
+                          value={form.event_end_at}
+                          onChange={(e) =>
+                            setForm({ ...form, event_end_at: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-chmsu-green"
+                        />
+                      </div>
 
-              <div>
-                <label
-                  htmlFor="expires_at"
-                  className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                >
-                  Expires At
-                </label>
-                <input
-                  id="expires_at"
-                  type="datetime-local"
-                  value={form.expires_at}
-                  onChange={(e) =>
-                    setForm({ ...form, expires_at: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-chmsu-green"
-                />
-              </div>
-            </div>
+                      <div>
+                        <label
+                          htmlFor="expires_at"
+                          className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          Expires At
+                        </label>
+                        <input
+                          id="expires_at"
+                          type="datetime-local"
+                          value={form.expires_at}
+                          onChange={(e) =>
+                            setForm({ ...form, expires_at: e.target.value })
+                          }
+                          className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs text-slate-900 outline-none focus:border-chmsu-green"
+                        />
+                      </div>
+                    </div>
 
-            <div className="flex flex-wrap gap-4 pt-1">
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={form.is_public}
-                  onChange={(e) =>
-                    setForm({ ...form, is_public: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded accent-chmsu-green"
-                />
-                Public (Show on Kiosk)
-              </label>
+                    <div className="flex flex-wrap gap-4 pt-1">
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={form.is_public}
+                          onChange={(e) =>
+                            setForm({ ...form, is_public: e.target.checked })
+                          }
+                          className="h-4 w-4 rounded accent-chmsu-green"
+                        />
+                        Public (Show on Kiosk)
+                      </label>
 
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={form.is_pinned}
-                  onChange={(e) =>
-                    setForm({ ...form, is_pinned: e.target.checked })
-                  }
-                  className="h-4 w-4 rounded accent-chmsu-green"
-                />
-                Pin Notice
-              </label>
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={form.is_pinned}
+                          onChange={(e) =>
+                            setForm({ ...form, is_pinned: e.target.checked })
+                          }
+                          className="h-4 w-4 rounded accent-chmsu-green"
+                        />
+                        Pin Notice
+                      </label>
 
-              {canPublishUniversityWide && (
-                <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-chmsu-navy">
-                  <input
-                    type="checkbox"
-                    checked={form.university_wide}
-                    onChange={(e) =>
-                      setForm({ ...form, university_wide: e.target.checked })
-                    }
-                    className="h-4 w-4 rounded accent-chmsu-navy"
-                  />
-                  University-Wide (All 4 Campuses)
-                </label>
-              )}
-            </div>
+                      {canPublishUniversityWide && (
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-chmsu-navy">
+                          <input
+                            type="checkbox"
+                            checked={form.university_wide}
+                            onChange={(e) =>
+                              setForm({ ...form, university_wide: e.target.checked })
+                            }
+                            className="h-4 w-4 rounded accent-chmsu-navy"
+                          />
+                          University-Wide (All 4 Campuses)
+                        </label>
+                      )}
+                    </div>
 
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                disabled={savingAnnouncement}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-chmsu-forest px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-green disabled:opacity-60"
-              >
-                {savingAnnouncement ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {editingId ? "Update Announcement" : "Publish Announcement"}
-              </button>
-            </div>
-          </form>
-        </section>
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={savingAnnouncement}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-chmsu-forest px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-green disabled:opacity-60"
+                      >
+                        {savingAnnouncement ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        {editingId ? "Update Announcement" : "Publish Announcement"}
+                      </button>
+                    </div>
+                  </form>
+                </section>
               </div>
 
               {/* My Published Announcements (Own Posts ONLY) */}
@@ -1076,9 +1079,8 @@ export default function FacultyPortalClient({
                           return (
                             <tr
                               key={item.id}
-                              className={`transition hover:bg-slate-50/70 ${
-                                !item.is_active ? "opacity-60" : ""
-                              }`}
+                              className={`transition hover:bg-slate-50/70 ${!item.is_active ? "opacity-60" : ""
+                                }`}
                             >
                               <td className="px-5 py-3.5 align-top">
                                 <div className="flex items-center gap-2">
@@ -1124,11 +1126,10 @@ export default function FacultyPortalClient({
                               <td className="px-4 py-3.5 align-top">
                                 <div className="flex flex-wrap gap-1.5">
                                   <span
-                                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                      item.is_active
+                                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${item.is_active
                                         ? "bg-emerald-100 text-emerald-800"
                                         : "bg-slate-200 text-slate-600"
-                                    }`}
+                                      }`}
                                   >
                                     {item.is_active ? "Active" : "Inactive"}
                                   </span>
@@ -1243,11 +1244,10 @@ export default function FacultyPortalClient({
                       key={cat.value}
                       type="button"
                       onClick={() => setNewsCategory(cat.value)}
-                      className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${
-                        newsCategory === cat.value
+                      className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${newsCategory === cat.value
                           ? "bg-chmsu-forest text-white"
                           : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green"
-                      }`}
+                        }`}
                     >
                       {cat.label}
                     </button>
@@ -1280,14 +1280,13 @@ export default function FacultyPortalClient({
                     return (
                       <article
                         key={item.id}
-                        className={`rounded-2xl border bg-white p-4 sm:p-5 ${
-                          item.priority === "urgent" ||
-                          item.category === "emergency"
+                        className={`rounded-2xl border bg-white p-4 sm:p-5 ${item.priority === "urgent" ||
+                            item.category === "emergency"
                             ? "border-chmsu-flame/50 bg-orange-50/40"
                             : item.is_pinned
                               ? "border-chmsu-gold bg-amber-50/30"
                               : "border-chmsu-border"
-                        }`}
+                          }`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex flex-wrap items-center gap-1.5">

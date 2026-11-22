@@ -147,12 +147,12 @@ export default function PortalSidebar({
 
           {!isCompact && badgeCount > 0 && (
             <span className="rounded-full bg-[#FACC15] px-2 py-0.5 text-[11px] font-bold text-[#143D29] tabular-nums">
-              {badgeCount}
+              {badgeCount > 99 ? "99+" : badgeCount}
             </span>
           )}
           {!isCompact && alertCount > 0 && (
             <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
-              {alertCount}
+              {alertCount > 99 ? "99+" : alertCount}
             </span>
           )}
           {!isCompact && hasAlertDot && (

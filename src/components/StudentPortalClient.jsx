@@ -21,6 +21,7 @@ import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
 } from "@/components/PortalSidebar";
+import useUnreadAnnouncements from "@/hooks/useUnreadAnnouncements";
 import {
   ANNOUNCEMENT_CATEGORIES,
   getAvailabilityMeta,
@@ -193,12 +194,19 @@ export default function StudentPortalClient({
     }
   }
 
+  const { unreadCount: unreadAnnouncementsCount } = useUnreadAnnouncements({
+    userId: profile.id,
+    announcements,
+    isViewingAnnouncements: activeTab === "news",
+  });
+
   const tabs = [
     {
       id: "news",
       label: "Announcements",
       desktopLabel: "Announcements",
       icon: Newspaper,
+      badge: unreadAnnouncementsCount,
     },
     {
       id: "instructors",
@@ -212,6 +220,7 @@ export default function StudentPortalClient({
     id: tab.id,
     label: tab.desktopLabel,
     icon: tab.icon,
+    badge: tab.badge,
   }));
 
   return (
@@ -564,7 +573,14 @@ export default function StudentPortalClient({
                 {isActive && (
                   <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-chmsu-green" />
                 )}
-                <Icon className="h-5 w-5" />
+                <span className="relative">
+                  <Icon className="h-5 w-5" />
+                  {tab.badge > 0 && (
+                    <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#FACC15] px-1 text-[10px] font-bold text-[#143D29] tabular-nums">
+                      {tab.badge > 99 ? "99+" : tab.badge}
+                    </span>
+                  )}
+                </span>
                 <span className="truncate">{tab.label}</span>
               </button>
             );
