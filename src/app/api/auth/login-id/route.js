@@ -23,14 +23,14 @@ export async function POST(request) {
 
     if (!isIdNumber && !isEmail) {
       return NextResponse.json(
-        { error: "Enter a valid 8-digit CHMSU ID Number or Email address." },
+        { error: "Enter a valid School ID or Email address." },
         { status: 400 }
       );
     }
 
     const supabase = await createClient();
 
-    // 1. Resolve email either from 8-digit ID lookup or directly from user input
+    // 1. Resolve email either from School ID lookup or directly from user input
     let resolvedEmail = "";
     if (isIdNumber) {
       const { data: lookedUpEmail, error: lookupError } = await supabase.rpc(

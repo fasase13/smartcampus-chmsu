@@ -5,10 +5,14 @@ import { ADMIN_PORTAL_ROLES, getDefaultRouteForRole } from "@/lib/constants";
 export async function GET(request) {
   const { searchParams } = request.nextUrl;
   const code = searchParams.get("code");
+  const next = searchParams.get("next");
   const oauthError = searchParams.get("error");
   const oauthErrorDesc = searchParams.get("error_description") ?? "";
 
   if (oauthError || !code) {
+    if (next === "/reset-password") {
+      return NextResponse.redirect(new URL("/reset-password", request.url));
+    }
     const isBannedErr = oauthErrorDesc.toLowerCase().includes("banned");
     return NextResponse.redirect(
       new URL(
@@ -24,6 +28,9 @@ export async function GET(request) {
     await supabase.auth.exchangeCodeForSession(code);
 
   if (exchangeError || !exchangeData?.user) {
+    if (next === "/reset-password") {
+      return NextResponse.redirect(new URL("/reset-password", request.url));
+    }
     const isBannedErr = (exchangeError?.message ?? "")
       .toLowerCase()
       .includes("banned");
@@ -82,7 +89,12 @@ export async function GET(request) {
     return NextResponse.redirect(new URL("/maintenance", request.url));
   }
 
-  // 4. Automatic Routing
+  // 4. Password Recovery Redirect (bypasses normal portal/pending routing so user can set a new password)
+  if (next === "/reset-password") {
+    return NextResponse.redirect(new URL("/reset-password", request.url));
+  }
+
+  // 5. Automatic Routing
   if (
     !profile ||
     profile.profile_completed === false ||

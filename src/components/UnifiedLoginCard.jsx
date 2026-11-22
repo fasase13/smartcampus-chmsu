@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
+  CheckCircle2,
   Eye,
   EyeOff,
   Loader2,
@@ -60,6 +61,7 @@ export default function UnifiedLoginCard() {
   const searchParams = useSearchParams();
   const queryErrorCode = searchParams.get("error");
   const nextParam = searchParams.get("next");
+  const resetSuccess = searchParams.get("reset") === "success";
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -104,7 +106,7 @@ export default function UnifiedLoginCard() {
       !EMAIL_REGEX.test(cleanIdentifier)
     ) {
       setErrorMessage(
-        "Enter a valid 8-digit CHMSU ID Number or Email address."
+        "Enter a valid School ID or Email address."
       );
       return;
     }
@@ -150,11 +152,11 @@ export default function UnifiedLoginCard() {
 
       const destination =
         isSafeNext &&
-        payload.campus_slug &&
-        nextParam.startsWith(`/${payload.campus_slug}/`)
+          payload.campus_slug &&
+          nextParam.startsWith(`/${payload.campus_slug}/`)
           ? nextParam
           : payload.redirect_to ||
-            `/${payload.campus_slug || "talisay"}/student`;
+          `/${payload.campus_slug || "talisay"}/student`;
 
       router.push(destination);
       router.refresh();
@@ -192,13 +194,26 @@ export default function UnifiedLoginCard() {
           </div>
         </div>
         <p className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/90">
-          Your CHMSU campus and role are detected automatically from your ID
-          Number or Email.
+          Your CHMSU campus and role are detected automatically from your School
+          ID or Email.
         </p>
       </div>
 
       {/* Form Body */}
       <form onSubmit={handleSubmit} className="space-y-4 p-6">
+        {resetSuccess && !errorMessage && (
+          <div
+            role="status"
+            className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-sm text-emerald-900"
+          >
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+            <span>
+              Your password has been updated. You can now sign in with your new
+              password.
+            </span>
+          </div>
+        )}
+
         {errorMessage && (
           <div
             role="alert"
@@ -214,7 +229,7 @@ export default function UnifiedLoginCard() {
             htmlFor="identifier"
             className="block text-sm font-semibold text-slate-700"
           >
-            CHMSU ID Number or Email
+            School ID or Email
           </label>
           <div className="relative mt-1.5">
             <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -232,12 +247,20 @@ export default function UnifiedLoginCard() {
         </div>
 
         <div>
-          <label
-            htmlFor="password"
-            className="block text-sm font-semibold text-slate-700"
-          >
-            Password
-          </label>
+          <div className="flex items-center justify-between">
+            <label
+              htmlFor="password"
+              className="block text-sm font-semibold text-slate-700"
+            >
+              Password
+            </label>
+            <Link
+              href="/forgot-password"
+              className="text-xs font-semibold text-chmsu-forest transition hover:text-chmsu-green"
+            >
+              Forgot password?
+            </Link>
+          </div>
           <div className="relative mt-1.5">
             <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input

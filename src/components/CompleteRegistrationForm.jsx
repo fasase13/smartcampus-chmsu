@@ -301,9 +301,7 @@ export default function CompleteRegistrationForm({
       return;
     }
     if (!ID_NUMBER_REGEX.test(cleanId)) {
-      setErrorMessage(
-        "Please enter a valid 8-digit School/Student ID number (e.g., 20230399)."
-      );
+      setErrorMessage("Please enter a valid School ID.");
       return;
     }
     if (cleanName.length < 2) {
@@ -346,7 +344,7 @@ export default function CompleteRegistrationForm({
     try {
       const supabase = createClient();
 
-      // 1. Check 8-digit ID availability only if new or changed from own current value
+      // 1. Check School ID availability only if new or changed from own current value
       if (!profile?.employee_or_student_id || cleanId !== profile.employee_or_student_id) {
         const { data: isAvailable, error: availError } = await supabase.rpc(
           "check_id_number_available",
@@ -355,14 +353,14 @@ export default function CompleteRegistrationForm({
 
         if (availError) {
           setErrorMessage(
-            `Unable to verify ID number availability: ${availError.message}`
+            `Unable to verify School ID availability: ${availError.message}`
           );
           return;
         }
 
         if (!isAvailable) {
           setErrorMessage(
-            `ID Number ${cleanId} is already registered to another account.`
+            `School ID ${cleanId} is already registered to another account.`
           );
           return;
         }
@@ -425,7 +423,15 @@ export default function CompleteRegistrationForm({
       );
 
       if (completeError) {
-        setErrorMessage(completeError.message);
+        const rawMsg = completeError.message || "Unable to save your credentials.";
+        const friendlyMsg = /must be exactly 8 digits/i.test(rawMsg)
+          ? "Please enter a valid School ID."
+          : /returned as invalid/i.test(rawMsg) && /id number/i.test(rawMsg)
+            ? "This School ID was marked invalid by the admin. Please enter a different value."
+            : rawMsg
+                .replace(/8[- ]digit\s+id\s+number/gi, "School ID")
+                .replace(/\bid\s+number\b/gi, "School ID");
+        setErrorMessage(friendlyMsg);
         return;
       }
 
@@ -585,7 +591,7 @@ export default function CompleteRegistrationForm({
               </div>
             )}
 
-            {/* Campus + 8-Digit ID Number */}
+            {/* Campus + School ID */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto]">
               <div>
                 <label
@@ -988,7 +994,7 @@ export default function CompleteRegistrationForm({
                 <span className="font-semibold text-chmsu-forest">
                   RA 10173 Data Privacy Protection:
                 </span>{" "}
-                Your ID number and School ID photos are stored in a private,
+                Your School ID and verification photos are stored in a private,
                 access-controlled bucket visible strictly to CHMSU Campus Admin
                 and System Admin for verification and are never displayed on
                 public kiosks.

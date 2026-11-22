@@ -879,7 +879,7 @@ export default function CampusAdminPortalClient({
                     type="search"
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
-                    placeholder="Search name, ID number, email, department..."
+                    placeholder="Search name, School ID, email, department..."
                     className="w-full rounded-xl border border-chmsu-border bg-chmsu-canvas py-2 pl-9 pr-3 text-sm outline-none focus:border-chmsu-green focus:bg-white"
                   />
                 </div>

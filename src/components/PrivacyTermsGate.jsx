@@ -181,7 +181,7 @@ export default function PrivacyTermsGate({ profile }) {
                 2012) and its Implementing Rules and Regulations, CHMSU collects
                 and processes only the minimum personal information necessary
                 for identity verification and institutional operations: your
-                full name, 8-digit CHMSU Student or Employee ID number, email
+                full name, School ID, email
                 address, assigned campus, college or department, university
                 role, and Front &amp; Back School ID verification photos.
               </p>
@@ -192,7 +192,7 @@ export default function PrivacyTermsGate({ profile }) {
                 3. ID Verification &amp; Document Tracking Privacy
               </h3>
               <p>
-                Your School ID photos and 8-digit ID number are stored in
+                Your School ID and verification photos are stored in
                 private, access-controlled storage buckets and are accessible
                 strictly to the CHMSU Superadmin and your assigned Campus Admin
                 via short-lived signed links for account verification. Personal ID

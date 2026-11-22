@@ -1609,7 +1609,7 @@ export default function ManagementPortalClient({
                       All registrations have been reviewed
                     </p>
                     <p className="text-xs text-slate-500">
-                      New 8-digit ID registrations will appear here
+                      New School ID registrations will appear here
                       automatically in real time.
                     </p>
                   </div>
@@ -1618,7 +1618,7 @@ export default function ManagementPortalClient({
                     <table className="w-full min-w-[780px] border-collapse text-left text-sm">
                       <thead>
                         <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
-                          <th className="px-5 py-3">ID Number</th>
+                          <th className="px-5 py-3">School ID</th>
                           <th className="px-4 py-3">Applicant</th>
                           <th className="px-4 py-3">Campus</th>
                           <th className="px-4 py-3">Requested Role</th>
@@ -2360,7 +2360,7 @@ export default function ManagementPortalClient({
                     rows={2}
                     value={rejectionReason}
                     onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="e.g., ID photo is blurry or ID number does not match the uploaded School ID."
+                    placeholder="e.g., ID photo is blurry or School ID does not match the uploaded ID."
                     className="mt-1.5 w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-red-400"
                   />
                 </div>

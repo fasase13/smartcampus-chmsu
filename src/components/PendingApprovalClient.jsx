@@ -210,7 +210,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500">
                   <CreditCard className="h-3.5 w-3.5" />
-                  ID Number
+                  School ID
                 </span>
                 <span className="rounded-md bg-white px-2.5 py-0.5 font-mono text-xs font-bold tracking-widest text-chmsu-forest border border-chmsu-border">
                   {profile?.employee_or_student_id ?? "—"}

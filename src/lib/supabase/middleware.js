@@ -134,8 +134,13 @@ export async function updateSession(request) {
     return supabaseResponse;
   }
 
-  // Public landing page & privacy notice
-  if (segments.length === 0 || segments[0] === "privacy") {
+  // Public landing page, privacy notice, and password recovery flow (blocked during maintenance above)
+  if (
+    segments.length === 0 ||
+    segments[0] === "privacy" ||
+    segments[0] === "forgot-password" ||
+    segments[0] === "reset-password"
+  ) {
     return supabaseResponse;
   }
 

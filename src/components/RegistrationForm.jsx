@@ -182,7 +182,7 @@ export default function RegistrationForm({ preselectedSlug = "" }) {
 
       if (!emailStatus?.available) {
         setErrorMessage(
-          "An account with this email address already exists. Please sign in using your 8-digit CHMSU ID Number."
+          "An account with this email address already exists. Please sign in using your School ID or Email."
         );
         return;
       }

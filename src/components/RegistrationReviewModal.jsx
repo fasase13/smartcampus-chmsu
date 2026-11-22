@@ -382,7 +382,7 @@ export default function RegistrationReviewModal({
                     rows={2}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g., Blurry front ID photo or ID number does not match the school ID"
+                    placeholder="e.g., Blurry front ID photo or School ID does not match the uploaded ID"
                     className="mt-1.5 w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-amber-600"
                   />
                 </div>
