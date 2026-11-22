@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -23,7 +22,6 @@ import {
   Eye,
   FileSpreadsheet,
   FileText,
-  Home,
   Loader2,
   LogOut,
   Printer,
@@ -974,19 +972,6 @@ export default function ManagementPortalClient({
               </button>
             );
           })}
-
-          <div className="hidden pt-4 lg:block">
-            <p className="px-3 text-[10px] font-bold uppercase tracking-widest text-white/50">
-              Quick Links
-            </p>
-            <Link
-              href="/"
-              className="mt-1 flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-xs font-medium text-white/75 hover:bg-white/10 hover:text-white"
-            >
-              <Home className="h-4 w-4" />
-              4-Campus Gateway
-            </Link>
-          </div>
         </nav>
 
         <div className="hidden border-t border-white/10 p-4 lg:block">

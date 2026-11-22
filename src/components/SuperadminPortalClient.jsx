@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -13,33 +12,37 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock,
   CreditCard,
+  Download,
   Edit3,
   Eye,
+  FileSpreadsheet,
   Globe,
   Loader2,
   LogOut,
   Megaphone,
   Pin,
   Plus,
+  RefreshCw,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Trash2,
   UserCheck,
   Users,
   Wrench,
   X,
-  XCircle,
-  ZoomIn,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import RegistrationReviewModal from "@/components/RegistrationReviewModal";
 import {
   ALL_ROLES,
   ANNOUNCEMENT_CATEGORIES,
   ANNOUNCEMENT_PRIORITIES,
+  DOCUMENT_STATUS_META,
   ROLE_LABELS,
   ROLES,
+  ROUTE_ACTION_LABELS,
   STORAGE_BUCKETS,
   getCampusAdminTitle,
 } from "@/lib/constants";
@@ -60,6 +63,32 @@ function isDocOverdue(doc) {
   if (doc.status === "completed" || doc.status === "archived") return false;
   if (doc.is_delayed) return true;
   return Boolean(doc.due_at && new Date(doc.due_at) < new Date());
+}
+
+function escapeCsvCell(value) {
+  const str = String(value ?? "");
+  if (/[",\n\r]/.test(str)) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function downloadCsvFile(filename, headers, rows) {
+  const lines = [
+    headers.map(escapeCsvCell).join(","),
+    ...rows.map((row) => row.map(escapeCsvCell).join(",")),
+  ];
+  const blob = new Blob([lines.join("\r\n")], {
+    type: "text/csv;charset=utf-8;",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 const EMPTY_ANNOUNCEMENT = {
@@ -95,27 +124,37 @@ export default function SuperadminPortalClient({
 
   const [users, setUsers] = useState(initialUsers);
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
-  const [documents] = useState(initialDocuments);
+  const [documents, setDocuments] = useState(initialDocuments);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
   const [settings, setSettings] = useState(initialSettings);
+
+  // Analytics & Document Alerts state
+  const [analyticsCampusId, setAnalyticsCampusId] = useState("all");
+  const [docSearch, setDocSearch] = useState("");
+  const [docCampusFilter, setDocCampusFilter] = useState("all");
+  const [docOverdueOnly, setDocOverdueOnly] = useState(false);
+  const [runningSla, setRunningSla] = useState(false);
+  const [inspectDoc, setInspectDoc] = useState(null);
+  const [inspectRoutes, setInspectRoutes] = useState([]);
+  const [loadingRoutes, setLoadingRoutes] = useState(false);
+  const [downloadingFile, setDownloadingFile] = useState(false);
+
+  // Users & Roles state (read-only details + deactivate/reactivate only)
+  const [userSearch, setUserSearch] = useState("");
+  const [userCampusFilter, setUserCampusFilter] = useState("all");
+  const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [togglingUserStatus, setTogglingUserStatus] = useState(false);
 
   // Announcements editor state
   const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT);
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
-  const [announcementCampusFilter, setAnnouncementCampusFilter] = useState("all");
+  const [announcementCampusFilter, setAnnouncementCampusFilter] =
+    useState("all");
 
-  // Pending registrations filter & ID modal
+  // Pending registrations filter & review modal target
   const [regCampusFilter, setRegCampusFilter] = useState("all");
   const [reviewUser, setReviewUser] = useState(null);
-  const [reviewRole, setReviewRole] = useState("student");
-  const [reviewCampusId, setReviewCampusId] = useState("");
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [showRejectBox, setShowRejectBox] = useState(false);
-  const [loadingIdPhotos, setLoadingIdPhotos] = useState(false);
-  const [idPhotoUrls, setIdPhotoUrls] = useState({ front: "", back: "" });
-  const [idPhotoError, setIdPhotoError] = useState("");
-  const [submittingReview, setSubmittingReview] = useState(false);
-  const [zoomedPhoto, setZoomedPhoto] = useState(null);
 
   // Maintenance mode state
   const [maintMessageDraft, setMaintMessageDraft] = useState(
@@ -135,10 +174,22 @@ export default function SuperadminPortalClient({
     const { data } = await supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, show_on_kiosk, is_active, created_at"
       )
       .order("created_at", { ascending: false });
     if (data) setUsers(data);
+  }, []);
+
+  const refreshDocuments = useCallback(async () => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from("documents")
+      .select(
+        "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
+      )
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (data) setDocuments(data);
   }, []);
 
   const refreshAnnouncements = useCallback(async () => {
@@ -191,6 +242,11 @@ export default function SuperadminPortalClient({
       )
       .on(
         "postgres_changes",
+        { event: "*", schema: "public", table: "documents" },
+        () => refreshDocuments()
+      )
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "announcements" },
         () => refreshAnnouncements()
       )
@@ -204,8 +260,15 @@ export default function SuperadminPortalClient({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile.id, refreshAnnouncements, refreshSettings, refreshUsers]);
+  }, [
+    profile.id,
+    refreshAnnouncements,
+    refreshDocuments,
+    refreshSettings,
+    refreshUsers,
+  ]);
 
+  // Derived data
   const pendingRegistrations = useMemo(() => {
     return users.filter(
       (u) => u.approval_status === "pending" && u.profile_completed === true
@@ -246,6 +309,139 @@ export default function SuperadminPortalClient({
     });
   }, [campuses, documents, users]);
 
+  // Analytics & SLA calculations
+  const analyticsDocs = useMemo(() => {
+    if (analyticsCampusId === "all") return documents;
+    return documents.filter(
+      (d) =>
+        d.current_campus_id === analyticsCampusId ||
+        d.origin_campus_id === analyticsCampusId
+    );
+  }, [analyticsCampusId, documents]);
+
+  const analyticsKpis = useMemo(() => {
+    const total = analyticsDocs.length;
+    const active = analyticsDocs.filter(
+      (d) => d.status !== "completed" && d.status !== "archived"
+    );
+    const overdue = active.filter(isDocOverdue);
+    const interTransit = active.filter(
+      (d) => d.origin_campus_id !== d.current_campus_id
+    );
+    const onTimeCount = analyticsDocs.filter((d) => !isDocOverdue(d)).length;
+    const onTimeRate =
+      total === 0 ? 100 : Math.round((onTimeCount / total) * 1000) / 10;
+
+    const completed = analyticsDocs.filter((d) => d.completed_at);
+    const avgTurnaround =
+      completed.length === 0
+        ? 0
+        : Math.round(
+            (completed.reduce((acc, d) => {
+              const hrs =
+                (new Date(d.completed_at).getTime() -
+                  new Date(d.created_at).getTime()) /
+                3600000;
+              return acc + Math.max(0, hrs);
+            }, 0) /
+              completed.length) *
+              10
+          ) / 10;
+
+    return {
+      total,
+      activeCount: active.length,
+      overdueCount: overdue.length,
+      interTransitCount: interTransit.length,
+      onTimeRate,
+      avgTurnaround,
+    };
+  }, [analyticsDocs]);
+
+  const analyticsByCampus = useMemo(() => {
+    return campuses.map((c) => {
+      const docs = analyticsDocs.filter((d) => d.current_campus_id === c.id);
+      const delayed = docs.filter(isDocOverdue).length;
+      const delayRate =
+        docs.length === 0 ? 0 : Math.round((delayed / docs.length) * 100);
+      return { campus: c, total: docs.length, delayed, delayRate };
+    });
+  }, [analyticsDocs, campuses]);
+
+  const maxCampusVolume = useMemo(
+    () => Math.max(1, ...analyticsByCampus.map((c) => c.total)),
+    [analyticsByCampus]
+  );
+
+  const bottleneckOffices = useMemo(() => {
+    const map = new Map();
+    analyticsDocs.forEach((doc) => {
+      const campusName = campusMap[doc.current_campus_id]?.name ?? "CHMSU";
+      const key = `${doc.current_office}__${doc.current_campus_id}`;
+      const existing = map.get(key) ?? {
+        office: doc.current_office,
+        campusName,
+        total: 0,
+        active: 0,
+        overdue: 0,
+      };
+      existing.total += 1;
+      if (doc.status !== "completed" && doc.status !== "archived") {
+        existing.active += 1;
+      }
+      if (isDocOverdue(doc)) existing.overdue += 1;
+      map.set(key, existing);
+    });
+    return Array.from(map.values())
+      .sort((a, b) => b.overdue - a.overdue || b.active - a.active)
+      .slice(0, 8);
+  }, [analyticsDocs, campusMap]);
+
+  // Document Alerts tab derived list
+  const totalOverdueCount = useMemo(
+    () => documents.filter(isDocOverdue).length,
+    [documents]
+  );
+
+  const filteredDocuments = useMemo(() => {
+    const q = docSearch.trim().toLowerCase();
+    return documents.filter((d) => {
+      if (
+        docCampusFilter !== "all" &&
+        d.current_campus_id !== docCampusFilter &&
+        d.origin_campus_id !== docCampusFilter
+      ) {
+        return false;
+      }
+      if (docOverdueOnly && !isDocOverdue(d)) return false;
+      if (!q) return true;
+      return (
+        d.tracking_code?.toLowerCase().includes(q) ||
+        d.title?.toLowerCase().includes(q) ||
+        d.current_office?.toLowerCase().includes(q) ||
+        d.document_type?.toLowerCase().includes(q)
+      );
+    });
+  }, [docCampusFilter, docOverdueOnly, docSearch, documents]);
+
+  // Users & Roles derived list
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    return users.filter((u) => {
+      if (userCampusFilter !== "all" && u.campus_id !== userCampusFilter) {
+        return false;
+      }
+      if (userRoleFilter !== "all" && u.role !== userRoleFilter) return false;
+      if (!q) return true;
+      return (
+        u.full_name?.toLowerCase().includes(q) ||
+        u.email?.toLowerCase().includes(q) ||
+        u.employee_or_student_id?.toLowerCase().includes(q) ||
+        u.department?.toLowerCase().includes(q)
+      );
+    });
+  }, [userCampusFilter, userRoleFilter, userSearch, users]);
+
   const filteredAnnouncements = useMemo(() => {
     if (announcementCampusFilter === "all") return announcements;
     if (announcementCampusFilter === "university") {
@@ -272,6 +468,158 @@ export default function SuperadminPortalClient({
       );
     });
   }, [auditCampusFilter, auditLogs, auditQuery]);
+
+  // SLA Check & Document Custody Inspector
+  async function handleRunSlaCheck() {
+    setRunningSla(true);
+    setFeedback(null);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc("run_sla_delay_check");
+      if (error) {
+        setFeedback({ type: "error", message: error.message });
+        return;
+      }
+      await Promise.all([refreshDocuments(), refreshAuditLogs()]);
+      const flagged = data?.flagged_count ?? 0;
+      setFeedback({
+        type: flagged > 0 ? "warning" : "success",
+        message:
+          flagged > 0
+            ? `SLA Delay Check flagged ${flagged} newly overdue document${flagged === 1 ? "" : "s"}.`
+            : "SLA Delay Check completed — no newly overdue documents.",
+      });
+    } finally {
+      setRunningSla(false);
+    }
+  }
+
+  async function openInspectModal(doc) {
+    setInspectDoc(doc);
+    setLoadingRoutes(true);
+    try {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from("document_routes")
+        .select(
+          "id, campus_id, from_office, to_office, action, remarks, scanned_via_qr, created_at"
+        )
+        .eq("document_id", doc.id)
+        .order("created_at", { ascending: true });
+      setInspectRoutes(data ?? []);
+    } finally {
+      setLoadingRoutes(false);
+    }
+  }
+
+  async function handleSignedDownload(doc) {
+    if (!doc?.file_path) return;
+    setDownloadingFile(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.storage
+        .from(STORAGE_BUCKETS.DOCUMENT_FILES)
+        .createSignedUrl(doc.file_path, 300);
+      if (error || !data?.signedUrl) {
+        setFeedback({
+          type: "error",
+          message: error?.message || "Unable to generate download link.",
+        });
+        return;
+      }
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } finally {
+      setDownloadingFile(false);
+    }
+  }
+
+  function handleExportAnalyticsCsv() {
+    const today = new Date().toISOString().slice(0, 10);
+    const headers = [
+      "Tracking Code",
+      "Title",
+      "Type",
+      "Status",
+      "Origin Campus",
+      "Current Campus",
+      "Current Office",
+      "Overdue",
+      "Created At",
+    ];
+    const rows = analyticsDocs.map((d) => [
+      d.tracking_code,
+      d.title,
+      d.document_type,
+      d.status,
+      campusMap[d.origin_campus_id]?.name ?? "",
+      campusMap[d.current_campus_id]?.name ?? "",
+      d.current_office,
+      isDocOverdue(d) ? "YES" : "NO",
+      d.created_at,
+    ]);
+    downloadCsvFile(`chmsu-analytics-${today}.csv`, headers, rows);
+  }
+
+  // Deactivate / Reactivate User Account ONLY (never mutates role, campus, dept, office, or kiosk)
+  async function handleToggleUserActive() {
+    if (!selectedUser) return;
+
+    if (selectedUser.id === profile.id) {
+      setFeedback({
+        type: "error",
+        message: "You cannot deactivate your own account.",
+      });
+      return;
+    }
+
+    const nextActive = !selectedUser.is_active;
+    setTogglingUserStatus(true);
+    setFeedback(null);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("profiles")
+        .update({ is_active: nextActive })
+        .eq("id", selectedUser.id);
+
+      if (error) {
+        setFeedback({ type: "error", message: error.message });
+        return;
+      }
+
+      await supabase.from("audit_logs").insert({
+        campus_id: selectedUser.campus_id,
+        actor_id: profile.id,
+        actor_role: ROLES.SUPERADMIN,
+        action: nextActive
+          ? "user_account_reactivated"
+          : "user_account_deactivated",
+        entity_type: "profile",
+        entity_id: selectedUser.id,
+        metadata: {
+          target_name: selectedUser.full_name,
+          target_email: selectedUser.email,
+          before: { is_active: selectedUser.is_active },
+          after: { is_active: nextActive },
+        },
+      });
+
+      const updatedUser = { ...selectedUser, is_active: nextActive };
+      setSelectedUser(updatedUser);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+      );
+      await Promise.all([refreshUsers(), refreshAuditLogs()]);
+      setFeedback({
+        type: nextActive ? "success" : "warning",
+        message: nextActive
+          ? `Reactivated account for ${selectedUser.full_name}.`
+          : `Deactivated account for ${selectedUser.full_name}.`,
+      });
+    } finally {
+      setTogglingUserStatus(false);
+    }
+  }
 
   // Announcement CRUD
   async function handleSaveAnnouncement(e) {
@@ -372,105 +720,19 @@ export default function SuperadminPortalClient({
     setFeedback({ type: "success", message: "Announcement deleted." });
   }
 
-  // Pending Registration ID Verification
-  async function openReviewModal(target) {
-    setReviewUser(target);
-    setReviewRole(target.requested_role || target.role || "student");
-    setReviewCampusId(target.campus_id || campuses[0]?.id || "");
-    setRejectionReason("");
-    setShowRejectBox(false);
-    setIdPhotoUrls({ front: "", back: "" });
-    setIdPhotoError("");
-    setZoomedPhoto(null);
-
-    if (!target.id_front_path && !target.id_back_path) {
-      setIdPhotoError("No ID verification photos were attached.");
-      return;
-    }
-
-    setLoadingIdPhotos(true);
-    try {
-      const supabase = createClient();
-      const [frontRes, backRes] = await Promise.all([
-        target.id_front_path
-          ? supabase.storage
-              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-              .createSignedUrl(target.id_front_path, 300)
-          : Promise.resolve({ data: null, error: null }),
-        target.id_back_path
-          ? supabase.storage
-              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-              .createSignedUrl(target.id_back_path, 300)
-          : Promise.resolve({ data: null, error: null }),
-      ]);
-
-      if (frontRes.error || backRes.error) {
-        setIdPhotoError(
-          frontRes.error?.message ||
-            backRes.error?.message ||
-            "Unable to load signed ID photos."
-        );
-      }
-
-      setIdPhotoUrls({
-        front: frontRes.data?.signedUrl ?? "",
-        back: backRes.data?.signedUrl ?? "",
-      });
-    } finally {
-      setLoadingIdPhotos(false);
-    }
-  }
-
-  function closeReviewModal() {
+  // Callback after RegistrationReviewModal completes activate / return / reject
+  async function handleReviewCompleted(decision, target) {
     setReviewUser(null);
-    setIdPhotoUrls({ front: "", back: "" });
-    setIdPhotoError("");
-    setShowRejectBox(false);
-    setRejectionReason("");
-    setZoomedPhoto(null);
-  }
-
-  async function handleReviewDecision(decision) {
-    if (!reviewUser) return;
-    if (decision === "reject" && !rejectionReason.trim()) {
-      setFeedback({
-        type: "error",
-        message: "Please provide a brief reason before rejecting.",
-      });
-      return;
-    }
-
-    setSubmittingReview(true);
-    setFeedback(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc("review_user_registration", {
-        p_user_id: reviewUser.id,
-        p_decision: decision,
-        p_assigned_role: reviewRole,
-        p_campus_id: reviewCampusId || reviewUser.campus_id,
-        p_rejection_reason:
-          decision === "reject" ? rejectionReason.trim() : null,
-      });
-
-      if (error) {
-        setFeedback({ type: "error", message: error.message });
-        return;
-      }
-
-      const name = reviewUser.full_name;
-      closeReviewModal();
-      await Promise.all([refreshUsers(), refreshAuditLogs()]);
-      setFeedback({
-        type: decision === "approve" ? "success" : "warning",
-        message:
-          decision === "approve"
-            ? `Approved ${name} as ${ROLE_LABELS[reviewRole] ?? reviewRole}.`
-            : `Declined registration for ${name}.`,
-      });
-    } finally {
-      setSubmittingReview(false);
-    }
+    await Promise.all([refreshUsers(), refreshAuditLogs()]);
+    setFeedback({
+      type: decision === "activate" ? "success" : "warning",
+      message:
+        decision === "activate"
+          ? `Activated account for ${target.full_name}.`
+          : decision === "return"
+            ? `Returned registration for ${target.full_name} for correction.`
+            : `Rejected registration and permanently banned ${target.email}.`,
+    });
   }
 
   // Maintenance Mode Toggle
@@ -494,7 +756,7 @@ export default function SuperadminPortalClient({
       setFeedback({
         type: nextEnabled ? "warning" : "success",
         message: nextEnabled
-          ? "System Maintenance Mode is now ENABLED. All non-Superadmin traffic is redirected to /maintenance."
+          ? "System Maintenance Mode is now ENABLED. All non-System Admin traffic is redirected to /maintenance."
           : "System Maintenance Mode is now DISABLED. All portals and kiosks are back online.",
       });
     } finally {
@@ -516,13 +778,21 @@ export default function SuperadminPortalClient({
 
   const navTabs = [
     { id: "overview", label: "Overview & Campus Admins", icon: Building2 },
-    { id: "announcements", label: "Announcements", icon: Megaphone },
+    { id: "analytics", label: "Analytics & SLA", icon: BarChart3 },
+    {
+      id: "documents",
+      label: "Document Alerts",
+      icon: ShieldAlert,
+      alertBadge: totalOverdueCount,
+    },
+    { id: "users", label: "Users & Roles", icon: Users },
     {
       id: "registrations",
       label: "Pending Registrations",
       icon: UserCheck,
       badge: pendingRegistrations.length,
     },
+    { id: "announcements", label: "Announcements", icon: Megaphone },
     {
       id: "maintenance",
       label: "System Maintenance",
@@ -534,9 +804,9 @@ export default function SuperadminPortalClient({
 
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
-      {/* Sidebar */}
-      <aside className="flex w-full shrink-0 flex-col border-b border-chmsu-navy/20 bg-chmsu-navy text-white lg:w-64 lg:border-b-0 lg:border-r">
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
+      {/* Unified Scrollable Sidebar with Pinned Profile Footer */}
+      <aside className="flex w-full shrink-0 flex-col border-b border-chmsu-navy/20 bg-chmsu-navy text-white lg:sticky lg:top-0 lg:h-dvh lg:w-64 lg:border-b-0 lg:border-r">
+        <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-5 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
             <Image
               src="/images/chmsu-logo.jpg"
@@ -551,12 +821,12 @@ export default function SuperadminPortalClient({
               SmartCampus CHMSU
             </p>
             <p className="truncate text-[11px] font-semibold text-chmsu-gold">
-              Superadmin Console
+              System Admin Console
             </p>
           </div>
         </div>
 
-        <nav className="flex flex-wrap gap-1 p-3 lg:flex-1 lg:flex-col">
+        <nav className="flex flex-wrap gap-1 overflow-y-auto p-3 lg:flex-1 lg:flex-col lg:flex-nowrap">
           {navTabs.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -565,7 +835,7 @@ export default function SuperadminPortalClient({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition ${
+                className={`flex shrink-0 items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition ${
                   active
                     ? "bg-white text-chmsu-navy shadow-xs"
                     : "text-white/85 hover:bg-white/10 hover:text-white"
@@ -580,25 +850,20 @@ export default function SuperadminPortalClient({
                     {tab.badge}
                   </span>
                 )}
+                {tab.alertBadge > 0 && (
+                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
+                    {tab.alertBadge}
+                  </span>
+                )}
                 {tab.alertDot && (
-                  <span className="h-2.5 w-2.5 rounded-full bg-red-500" />
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
                 )}
               </button>
             );
           })}
-
-          <div className="mt-2 border-t border-white/10 pt-2">
-            <Link
-              href="/management"
-              className="flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-xs font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
-            >
-              <BarChart3 className="h-4 w-4 shrink-0" />
-              Analytics &amp; Management
-            </Link>
-          </div>
         </nav>
 
-        <div className="border-t border-white/10 p-4">
+        <div className="shrink-0 border-t border-white/10 p-4">
           <div className="rounded-xl bg-white/10 p-3">
             <p className="truncate text-sm font-semibold text-white">
               {profile.full_name}
@@ -606,7 +871,7 @@ export default function SuperadminPortalClient({
             <p className="truncate text-xs text-white/70">{profile.email}</p>
             <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-chmsu-gold px-2.5 py-0.5 text-[11px] font-bold text-chmsu-navy">
               <ShieldCheck className="h-3 w-3" />
-              Superadmin
+              System Admin
             </span>
           </div>
 
@@ -624,12 +889,11 @@ export default function SuperadminPortalClient({
 
       {/* Main Content */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Top Bar */}
         <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-chmsu-forest">
-                University-Wide Superadmin Control
+                University-Wide System Admin Control
               </p>
               <p className="text-xs text-slate-500">
                 4 CHMSU Campuses &bull; Talisay, Alijis, Binalbagan, Fortune
@@ -688,21 +952,13 @@ export default function SuperadminPortalClient({
                     key={item.campus.id}
                     className="rounded-2xl border border-chmsu-border bg-white p-5"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-chmsu-green">
-                          CHMSU {item.campus.name}
-                        </p>
-                        <h2 className="mt-0.5 text-lg font-bold text-chmsu-forest">
-                          {item.adminTitle}
-                        </h2>
-                      </div>
-                      <Link
-                        href={`/${item.campus.slug}/admin`}
-                        className="rounded-lg border border-chmsu-border bg-chmsu-canvas px-3 py-1.5 text-xs font-semibold text-chmsu-forest transition hover:border-chmsu-green hover:bg-chmsu-green/10"
-                      >
-                        Open Campus Admin
-                      </Link>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wider text-chmsu-green">
+                        CHMSU {item.campus.name}
+                      </p>
+                      <h2 className="mt-0.5 text-lg font-bold text-chmsu-forest">
+                        {item.adminTitle}
+                      </h2>
                     </div>
 
                     <div className="mt-4 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3.5 py-2.5 text-xs">
@@ -770,7 +1026,529 @@ export default function SuperadminPortalClient({
             </div>
           )}
 
-          {/* TAB 2: ANNOUNCEMENTS (UNIVERSITY-WIDE OR CAMPUS) */}
+          {/* TAB 2: ANALYTICS & SLA */}
+          {activeTab === "analytics" && (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold text-chmsu-forest">
+                    Analytics &amp; SLA Performance
+                  </h1>
+                  <p className="text-sm text-slate-600">
+                    Cross-campus KPIs, turnaround metrics, and office bottleneck
+                    analysis.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={analyticsCampusId}
+                    onChange={(e) => setAnalyticsCampusId(e.target.value)}
+                    className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                  >
+                    <option value="all">All 4 Campuses</option>
+                    {campuses.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        CHMSU {c.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleExportAnalyticsCsv}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-chmsu-forest bg-white px-3.5 py-2 text-xs font-bold text-chmsu-forest hover:bg-chmsu-green/10"
+                  >
+                    <FileSpreadsheet className="h-4 w-4 text-chmsu-green" />
+                    Export CSV
+                  </button>
+                </div>
+              </div>
+
+              {/* KPI Grid */}
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+                {[
+                  { label: "Total Documents", value: analyticsKpis.total },
+                  { label: "Active Routing", value: analyticsKpis.activeCount },
+                  {
+                    label: "Overdue Alerts",
+                    value: analyticsKpis.overdueCount,
+                    danger: analyticsKpis.overdueCount > 0,
+                  },
+                  {
+                    label: "On-Time SLA",
+                    value: `${analyticsKpis.onTimeRate}%`,
+                  },
+                  {
+                    label: "Avg Turnaround",
+                    value: `${analyticsKpis.avgTurnaround}h`,
+                  },
+                  {
+                    label: "Inter-Campus",
+                    value: analyticsKpis.interTransitCount,
+                  },
+                ].map((kpi) => (
+                  <div
+                    key={kpi.label}
+                    className="rounded-2xl border border-chmsu-border bg-white p-4"
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      {kpi.label}
+                    </p>
+                    <p
+                      className={`mt-1 text-2xl font-bold tabular-nums ${
+                        kpi.danger ? "text-red-600" : "text-chmsu-forest"
+                      }`}
+                    >
+                      {kpi.value}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Campus Volume + Bottlenecks */}
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <section className="rounded-2xl border border-chmsu-border bg-white p-5">
+                  <h2 className="text-base font-bold text-chmsu-forest">
+                    Campus Document Volume &amp; Delay Rate
+                  </h2>
+                  <div className="mt-4 space-y-3.5">
+                    {analyticsByCampus.map((row) => (
+                      <div key={row.campus.id} className="space-y-1">
+                        <div className="flex justify-between text-xs font-semibold">
+                          <span className="text-slate-800">
+                            CHMSU {row.campus.name}
+                          </span>
+                          <span className="tabular-nums text-slate-600">
+                            {row.total} docs ({row.delayed} late &bull;{" "}
+                            {row.delayRate}%)
+                          </span>
+                        </div>
+                        <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-chmsu-green"
+                            style={{
+                              width: `${Math.round(
+                                (row.total / maxCampusVolume) * 100
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-chmsu-border bg-white p-5">
+                  <h2 className="text-base font-bold text-chmsu-forest">
+                    Top Bottleneck Offices
+                  </h2>
+                  {bottleneckOffices.length === 0 ? (
+                    <p className="mt-4 text-xs text-slate-500">
+                      No document routing data yet.
+                    </p>
+                  ) : (
+                    <div className="mt-3 divide-y divide-chmsu-border text-xs">
+                      {bottleneckOffices.map((b) => (
+                        <div
+                          key={`${b.office}-${b.campusName}`}
+                          className="flex items-center justify-between py-2.5"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-900">
+                              {b.office}
+                            </p>
+                            <p className="text-slate-500">
+                              CHMSU {b.campusName}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 tabular-nums">
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                              {b.active} active
+                            </span>
+                            {b.overdue > 0 && (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 font-bold text-red-800">
+                                {b.overdue} overdue
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: DOCUMENT ALERTS */}
+          {activeTab === "documents" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold text-chmsu-forest">
+                    Document Routing &amp; Red Delay Alerts
+                  </h1>
+                  <p className="text-sm text-slate-600">
+                    Monitor all-campus documents, flag SLA delays, and inspect
+                    full custody trails.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={runningSla}
+                  onClick={handleRunSlaCheck}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-flame px-3.5 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
+                >
+                  {runningSla ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Run SLA Delay Check
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-4">
+                <div className="relative sm:col-span-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={docSearch}
+                    onChange={(e) => setDocSearch(e.target.value)}
+                    placeholder="Search tracking code, title, office..."
+                    className="w-full rounded-xl border border-chmsu-border bg-chmsu-canvas py-2 pl-9 pr-3 text-sm outline-none focus:border-chmsu-green focus:bg-white"
+                  />
+                </div>
+                <select
+                  value={docCampusFilter}
+                  onChange={(e) => setDocCampusFilter(e.target.value)}
+                  className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="all">All Campuses</option>
+                  {campuses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      CHMSU {c.name}
+                    </option>
+                  ))}
+                </select>
+                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3 py-2 text-xs font-bold text-red-800">
+                  <input
+                    type="checkbox"
+                    checked={docOverdueOnly}
+                    onChange={(e) => setDocOverdueOnly(e.target.checked)}
+                    className="h-4 w-4 accent-red-600"
+                  />
+                  Overdue Only ({totalOverdueCount})
+                </label>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
+                {filteredDocuments.length === 0 ? (
+                  <p className="p-8 text-center text-sm text-slate-500">
+                    No documents match your filters.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[780px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-5 py-3">Tracking Code</th>
+                          <th className="px-4 py-3">Title &amp; Office</th>
+                          <th className="px-4 py-3">Campus</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-5 py-3 text-right">Trail</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-chmsu-border">
+                        {filteredDocuments.slice(0, 100).map((d) => {
+                          const overdue = isDocOverdue(d);
+                          const statusMeta = DOCUMENT_STATUS_META[d.status] ?? {
+                            label: d.status,
+                            badgeClass:
+                              "bg-slate-100 text-slate-800 border-slate-200",
+                          };
+                          return (
+                            <tr
+                              key={d.id}
+                              className={overdue ? "bg-red-50/40" : ""}
+                            >
+                              <td className="px-5 py-3 font-mono text-xs font-bold text-chmsu-forest">
+                                {d.tracking_code}
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="font-semibold text-slate-900">
+                                  {d.title}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {d.current_office} &bull; {d.document_type}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 text-xs text-slate-700">
+                                {campusMap[d.current_campus_id]?.name ?? "—"}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
+                                    overdue
+                                      ? "border-red-300 bg-red-100 text-red-900"
+                                      : statusMeta.badgeClass
+                                  }`}
+                                >
+                                  {overdue ? "Delayed" : statusMeta.label}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => openInspectModal(d)}
+                                  className="rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green"
+                                >
+                                  Inspect Trail
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: USERS & ROLES */}
+          {activeTab === "users" && (
+            <div className="space-y-4">
+              <div>
+                <h1 className="text-2xl font-bold text-chmsu-forest">
+                  Users &amp; Roles Management
+                </h1>
+                <p className="text-sm text-slate-600">
+                  View user details and manage account activation status across
+                  all 4 CHMSU campuses.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    placeholder="Search name, ID, email, dept..."
+                    className="w-full rounded-xl border border-chmsu-border bg-chmsu-canvas py-2 pl-9 pr-3 text-sm outline-none focus:border-chmsu-green focus:bg-white"
+                  />
+                </div>
+                <select
+                  value={userCampusFilter}
+                  onChange={(e) => setUserCampusFilter(e.target.value)}
+                  className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="all">All Campuses</option>
+                  {campuses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      CHMSU {c.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={userRoleFilter}
+                  onChange={(e) => setUserRoleFilter(e.target.value)}
+                  className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="all">All Roles</option>
+                  {ALL_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r] ?? r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[780px] border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
+                        <th className="px-5 py-3">User</th>
+                        <th className="px-4 py-3">Role</th>
+                        <th className="px-4 py-3">Assigned Campus</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-5 py-3 text-right">Manage</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-chmsu-border">
+                      {filteredUsers.map((u) => (
+                        <tr
+                          key={u.id}
+                          className={!u.is_active ? "bg-slate-50 opacity-65" : ""}
+                        >
+                          <td className="px-5 py-3">
+                            <p className="font-semibold text-slate-900">
+                              {u.full_name}{" "}
+                              {u.id === profile.id && (
+                                <span className="rounded bg-chmsu-gold/40 px-1.5 py-0.5 text-[10px] font-bold text-chmsu-forest">
+                                  You
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {u.employee_or_student_id ? (
+                                <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
+                                  ID {u.employee_or_student_id}
+                                </span>
+                              ) : null}
+                              {u.email}
+                              {u.department ? ` • ${u.department}` : ""}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                              {ROLE_LABELS[u.role] ?? u.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs font-medium text-slate-700">
+                            {campusMap[u.campus_id]?.name ?? "Unassigned"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                u.is_active
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {u.is_active ? "Active" : "Deactivated"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedUser(u)}
+                              className="rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green"
+                            >
+                              View Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 5: PENDING REGISTRATIONS (ALL CAMPUSES) */}
+          {activeTab === "registrations" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold text-chmsu-forest">
+                    Pending Registrations (All Campuses)
+                  </h1>
+                  <p className="text-sm text-slate-600">
+                    Inspect Front &amp; Back CHMSU IDs across all 4 campuses and
+                    approve or decline accounts.
+                  </p>
+                </div>
+
+                <select
+                  value={regCampusFilter}
+                  onChange={(e) => setRegCampusFilter(e.target.value)}
+                  className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="all">
+                    All Campuses ({pendingRegistrations.length})
+                  </option>
+                  {campuses.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      CHMSU {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
+                {filteredPending.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-2 p-10 text-center">
+                    <CheckCircle2 className="h-9 w-9 text-chmsu-green" />
+                    <p className="text-sm font-bold text-chmsu-forest">
+                      No pending registrations in this scope
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-5 py-3">School ID</th>
+                          <th className="px-4 py-3">Applicant</th>
+                          <th className="px-4 py-3">Campus</th>
+                          <th className="px-4 py-3">Requested Role</th>
+                          <th className="px-4 py-3">Submitted</th>
+                          <th className="px-5 py-3 text-left">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-chmsu-border">
+                        {filteredPending.map((u) => (
+                          <tr key={u.id} className="hover:bg-chmsu-canvas/60">
+                            <td className="px-5 py-3.5">
+                              <span className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border bg-chmsu-canvas px-2.5 py-1 font-mono text-xs font-bold tracking-widest text-chmsu-forest">
+                                <CreditCard className="h-3.5 w-3.5 text-chmsu-green" />
+                                {u.employee_or_student_id ?? "—"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <p className="font-semibold text-slate-900">
+                                {u.full_name}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {u.department || "No department"}
+                                {u.program_or_course
+                                  ? ` • ${u.program_or_course}`
+                                  : u.office_location
+                                    ? ` • ${u.office_location}`
+                                    : ""}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs font-medium text-slate-700">
+                              CHMSU{" "}
+                              {campusMap[u.campus_id]?.name ?? "Unassigned"}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                                {ROLE_LABELS[u.requested_role ?? "student"] ??
+                                  "Student"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">
+                              {formatDateTime(u.created_at)}
+                            </td>
+                            <td className="px-5 py-3.5 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setReviewUser(u)}
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-chmsu-forest px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-green"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                                View ID &amp; Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 6: ANNOUNCEMENTS */}
           {activeTab === "announcements" && (
             <div className="space-y-5">
               <div>
@@ -964,7 +1742,6 @@ export default function SuperadminPortalClient({
                 </div>
               </form>
 
-              {/* Filter + List */}
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-bold text-slate-700">
                   Published Announcements ({filteredAnnouncements.length})
@@ -1036,8 +1813,7 @@ export default function SuperadminPortalClient({
                           <button
                             type="button"
                             onClick={() => handleTogglePin(item)}
-                            title={item.is_pinned ? "Unpin" : "Pin"}
-                            className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green hover:text-chmsu-forest"
+                            className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green"
                           >
                             <Pin className="h-3.5 w-3.5" />
                           </button>
@@ -1055,16 +1831,14 @@ export default function SuperadminPortalClient({
                                 is_pinned: Boolean(item.is_pinned),
                               })
                             }
-                            title="Edit"
-                            className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green hover:text-chmsu-forest"
+                            className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green"
                           >
                             <Edit3 className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteAnnouncement(item)}
-                            title="Delete"
-                            className="rounded-lg border border-chmsu-border p-1.5 text-red-600 hover:border-red-300 hover:bg-red-50"
+                            className="rounded-lg border border-chmsu-border p-1.5 text-red-600 hover:bg-red-50"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -1077,108 +1851,7 @@ export default function SuperadminPortalClient({
             </div>
           )}
 
-          {/* TAB 3: PENDING REGISTRATIONS (ALL CAMPUSES) */}
-          {activeTab === "registrations" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h1 className="text-2xl font-bold text-chmsu-forest">
-                    Pending Registrations (All Campuses)
-                  </h1>
-                  <p className="text-sm text-slate-600">
-                    Inspect Front &amp; Back CHMSU IDs across all 4 campuses and
-                    approve or decline accounts.
-                  </p>
-                </div>
-
-                <select
-                  value={regCampusFilter}
-                  onChange={(e) => setRegCampusFilter(e.target.value)}
-                  className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-                >
-                  <option value="all">
-                    All Campuses ({pendingRegistrations.length})
-                  </option>
-                  {campuses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      CHMSU {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
-                {filteredPending.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center gap-2 p-10 text-center">
-                    <CheckCircle2 className="h-9 w-9 text-chmsu-green" />
-                    <p className="text-sm font-bold text-chmsu-forest">
-                      No pending registrations in this scope
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
-                          <th className="px-5 py-3">ID Number</th>
-                          <th className="px-4 py-3">Applicant</th>
-                          <th className="px-4 py-3">Campus</th>
-                          <th className="px-4 py-3">Requested Role</th>
-                          <th className="px-4 py-3">Submitted</th>
-                          <th className="px-5 py-3 text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-chmsu-border">
-                        {filteredPending.map((u) => (
-                          <tr key={u.id} className="hover:bg-chmsu-canvas/60">
-                            <td className="px-5 py-3.5">
-                              <span className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border bg-chmsu-canvas px-2.5 py-1 font-mono text-xs font-bold tracking-widest text-chmsu-forest">
-                                <CreditCard className="h-3.5 w-3.5 text-chmsu-green" />
-                                {u.employee_or_student_id ?? "—"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <p className="font-semibold text-slate-900">
-                                {u.full_name}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                {u.department || "No department"}
-                              </p>
-                            </td>
-                            <td className="px-4 py-3.5 text-xs font-medium text-slate-700">
-                              CHMSU{" "}
-                              {campusMap[u.campus_id]?.name ?? "Unassigned"}
-                            </td>
-                            <td className="px-4 py-3.5">
-                              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
-                                {ROLE_LABELS[u.requested_role ?? "student"] ??
-                                  "Student"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">
-                              {formatDateTime(u.created_at)}
-                            </td>
-                            <td className="px-5 py-3.5 text-right">
-                              <button
-                                type="button"
-                                onClick={() => openReviewModal(u)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-green"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                                View ID Photos
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: SYSTEM MAINTENANCE MODE */}
+          {/* TAB 7: SYSTEM MAINTENANCE MODE */}
           {activeTab === "maintenance" && (
             <div className="space-y-5">
               <div>
@@ -1186,7 +1859,7 @@ export default function SuperadminPortalClient({
                   System Maintenance Mode
                 </h1>
                 <p className="text-sm text-slate-600">
-                  Exclusively controlled by the Superadmin. When enabled, all
+                  Exclusively controlled by the System Admin. When enabled, all
                   portals, registrations, campus admins, and public kiosks
                   redirect to <code className="font-mono">/maintenance</code>.
                 </p>
@@ -1288,9 +1961,9 @@ export default function SuperadminPortalClient({
                         </p>
                         <p className="mt-0.5 text-xs">
                           All students, faculty, staff, RMOs, management, Campus
-                          Admins, and public kiosks will be immediately
-                          redirected to <code className="font-mono">/maintenance</code>.
-                          Only your Superadmin session and{" "}
+                          Admins, and public kiosks will be redirected to{" "}
+                          <code className="font-mono">/maintenance</code>. Only
+                          your System Admin session and{" "}
                           <code className="font-mono">/sys-admin</code> will
                           remain accessible.
                         </p>
@@ -1323,7 +1996,7 @@ export default function SuperadminPortalClient({
             </div>
           )}
 
-          {/* TAB 5: GLOBAL AUDIT LOGS */}
+          {/* TAB 8: GLOBAL AUDIT LOGS */}
           {activeTab === "audit" && (
             <div className="space-y-4">
               <div>
@@ -1382,7 +2055,9 @@ export default function SuperadminPortalClient({
                               </span>
                             )}
                             <span className="text-xs text-slate-600">
-                              {log.actor?.full_name || log.actor?.email || "System"}
+                              {log.actor?.full_name ||
+                                log.actor?.email ||
+                                "System"}
                             </span>
                             <span className="text-xs text-slate-400">
                               &bull;{" "}
@@ -1427,234 +2102,266 @@ export default function SuperadminPortalClient({
         </main>
       </div>
 
-      {/* View ID Photos Modal */}
-      {reviewUser && (
+      {/* Custody Trail Drawer */}
+      {inspectDoc && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Verify School ID Photos"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs"
         >
-          <div className="flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-2xl">
+          <div className="flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
             <div className="flex items-center justify-between bg-chmsu-forest px-5 py-4 text-white">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-chmsu-gold">
-                  School ID Verification &bull; Private Signed URL (5 min)
+                <p className="font-mono text-xs font-bold text-chmsu-gold">
+                  {inspectDoc.tracking_code}
                 </p>
-                <h3 className="text-base font-bold">
-                  {reviewUser.full_name}{" "}
-                  <span className="ml-1.5 rounded bg-white/15 px-2 py-0.5 font-mono text-xs tracking-widest">
-                    {reviewUser.employee_or_student_id ?? "No ID"}
-                  </span>
-                </h3>
+                <h3 className="text-base font-bold">{inspectDoc.title}</h3>
               </div>
               <button
                 type="button"
-                onClick={closeReviewModal}
+                onClick={() => setInspectDoc(null)}
                 className="rounded-lg p-1.5 text-white/80 hover:bg-white/10"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="flex-1 space-y-5 overflow-y-auto p-5">
-              {idPhotoError && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                  {idPhotoError}
+            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+              {inspectDoc.file_path && (
+                <div className="flex items-center justify-between rounded-xl border border-chmsu-border bg-chmsu-canvas p-3">
+                  <span className="truncate text-xs font-semibold text-slate-800">
+                    {inspectDoc.file_name}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={downloadingFile}
+                    onClick={() => handleSignedDownload(inspectDoc)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-chmsu-navy px-3 py-1.5 text-xs font-semibold text-white"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download
+                  </button>
                 </div>
               )}
 
-              {loadingIdPhotos ? (
-                <div className="flex h-48 items-center justify-center gap-2 rounded-xl border border-chmsu-border bg-slate-50 text-xs text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin text-chmsu-green" />
-                  Loading private ID photos...
-                </div>
+              <h4 className="text-sm font-bold text-chmsu-forest">
+                Custody Timeline
+              </h4>
+              {loadingRoutes ? (
+                <p className="flex items-center gap-2 text-xs text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading custody trail...
+                </p>
               ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {[
-                    { label: "Front of School ID", url: idPhotoUrls.front },
-                    { label: "Back of School ID", url: idPhotoUrls.back },
-                  ].map((photo) => (
-                    <div
-                      key={photo.label}
-                      className="overflow-hidden rounded-xl border border-chmsu-border bg-slate-50"
-                    >
-                      <div className="flex items-center justify-between border-b border-chmsu-border bg-white px-3 py-2 text-xs font-bold text-chmsu-forest">
-                        <span>{photo.label}</span>
-                        {photo.url && (
-                          <button
-                            type="button"
-                            onClick={() => setZoomedPhoto(photo)}
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-chmsu-navy"
-                          >
-                            <ZoomIn className="h-3.5 w-3.5" />
-                            Zoom
-                          </button>
-                        )}
+                <ol className="space-y-4 border-l-2 border-chmsu-border pl-4">
+                  {inspectRoutes.map((step) => (
+                    <li key={step.id} className="relative text-sm">
+                      <span className="absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-chmsu-forest" />
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-slate-900">
+                          {ROUTE_ACTION_LABELS[step.action] ?? step.action}
+                        </span>
+                        <span className="text-[11px] text-slate-500 tabular-nums">
+                          {formatDateTime(step.created_at)}
+                        </span>
                       </div>
-                      {photo.url ? (
-                        <button
-                          type="button"
-                          onClick={() => setZoomedPhoto(photo)}
-                          className="block w-full cursor-zoom-in p-2"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={photo.url}
-                            alt={photo.label}
-                            className="h-56 w-full rounded-lg bg-white object-contain"
-                          />
-                        </button>
-                      ) : (
-                        <div className="flex h-56 items-center justify-center text-xs text-slate-400">
-                          No image uploaded
-                        </div>
+                      <p className="text-xs text-slate-700">
+                        {step.from_office ? `${step.from_office} → ` : ""}
+                        <span className="font-semibold text-chmsu-navy">
+                          {step.to_office}
+                        </span>{" "}
+                        ({campusMap[step.campus_id]?.name ?? "CHMSU"})
+                      </p>
+                      {step.remarks && (
+                        <p className="mt-1 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
+                          {step.remarks}
+                        </p>
                       )}
-                    </div>
+                    </li>
                   ))}
-                </div>
+                </ol>
               )}
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div className="grid grid-cols-1 gap-3 rounded-xl border border-chmsu-border bg-white p-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600">
-                    Assigned Campus
-                  </label>
-                  <select
-                    value={reviewCampusId}
-                    onChange={(e) => setReviewCampusId(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                  >
-                    {campuses.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        CHMSU {c.name}
-                      </option>
-                    ))}
-                  </select>
+      {/* Read-Only User Details Modal (Deactivate / Reactivate Only) */}
+      {selectedUser && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="User Details"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-xl">
+            <div className="flex items-center justify-between bg-chmsu-forest px-5 py-4 text-white">
+              <div>
+                <h3 className="text-base font-bold">User Details</h3>
+                <p className="text-xs text-chmsu-gold">
+                  {selectedUser.full_name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedUser(null)}
+                aria-label="Close user details"
+                className="rounded-lg p-1 text-white/80 hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="divide-y divide-chmsu-border rounded-xl border border-chmsu-border bg-chmsu-canvas text-sm">
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Full Name
+                  </span>
+                  <span className="text-right font-semibold text-slate-900">
+                    {selectedUser.full_name}
+                  </span>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600">
-                    Assigned Role
-                  </label>
-                  <select
-                    value={reviewRole}
-                    onChange={(e) => setReviewRole(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Email
+                  </span>
+                  <span className="truncate text-right text-xs font-medium text-slate-800">
+                    {selectedUser.email}
+                  </span>
+                </div>
+
+                {selectedUser.employee_or_student_id && (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      School ID
+                    </span>
+                    <span className="rounded border border-chmsu-border bg-white px-2 py-0.5 font-mono text-xs font-bold tracking-widest text-chmsu-forest">
+                      {selectedUser.employee_or_student_id}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Role
+                  </span>
+                  <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                    {ROLE_LABELS[selectedUser.role] ?? selectedUser.role}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Assigned Campus
+                  </span>
+                  <span className="text-right text-xs font-semibold text-slate-800">
+                    {campusMap[selectedUser.campus_id]?.name
+                      ? `CHMSU ${campusMap[selectedUser.campus_id].name}`
+                      : "Unassigned"}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Department
+                  </span>
+                  <span className="text-right text-xs font-medium text-slate-800">
+                    {selectedUser.department || "—"}
+                  </span>
+                </div>
+
+                {selectedUser.role === ROLES.STUDENT ||
+                selectedUser.program_or_course ? (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      Program
+                    </span>
+                    <span className="text-right text-xs font-medium text-slate-800">
+                      {selectedUser.program_or_course || "—"}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      Office Location
+                    </span>
+                    <span className="text-right text-xs font-medium text-slate-800">
+                      {selectedUser.office_location || "—"}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Account Status
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      selectedUser.is_active
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
                   >
-                    {ALL_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {ROLE_LABELS[r] ?? r}
-                      </option>
-                    ))}
-                  </select>
+                    {selectedUser.is_active ? "Active" : "Deactivated"}
+                  </span>
                 </div>
               </div>
 
-              {showRejectBox && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                  <label className="block text-xs font-bold uppercase text-red-800">
-                    Rejection Reason
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Explain why this registration is declined..."
-                    className="mt-1.5 w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-chmsu-border bg-chmsu-canvas px-5 py-3.5">
-              {!showRejectBox ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <button
                   type="button"
-                  disabled={submittingReview}
-                  onClick={() => setShowRejectBox(true)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                  onClick={() => setSelectedUser(null)}
+                  className="rounded-xl border border-chmsu-border px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
-                  <XCircle className="h-4 w-4" />
-                  Reject...
+                  Close
                 </button>
-              ) : (
-                <div className="flex items-center gap-2">
+
+                {selectedUser.id === profile.id ? (
+                  <p className="text-xs font-medium text-amber-700">
+                    You cannot deactivate your own account.
+                  </p>
+                ) : selectedUser.is_active ? (
                   <button
                     type="button"
-                    onClick={() => setShowRejectBox(false)}
-                    className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-600"
+                    disabled={togglingUserStatus}
+                    onClick={handleToggleUserActive}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
                   >
-                    Back
+                    {togglingUserStatus && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Deactivate Account
                   </button>
+                ) : (
                   <button
                     type="button"
-                    disabled={submittingReview}
-                    onClick={() => handleReviewDecision("reject")}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white"
+                    disabled={togglingUserStatus}
+                    onClick={handleToggleUserActive}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-bold text-white transition hover:bg-chmsu-green disabled:opacity-60"
                   >
-                    Confirm Reject
+                    {togglingUserStatus && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Reactivate Account
                   </button>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={closeReviewModal}
-                  className="rounded-xl border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={submittingReview}
-                  onClick={() => handleReviewDecision("approve")}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-bold text-white hover:bg-chmsu-green"
-                >
-                  {submittingReview ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
-                  Approve &amp; Activate
-                </button>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Lightbox */}
-      {zoomedPhoto && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setZoomedPhoto(null)}
-          className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-slate-950/90 p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[92dvh] max-w-5xl flex-col items-center gap-3"
-          >
-            <div className="flex w-full items-center justify-between text-white">
-              <span className="text-sm font-bold">{zoomedPhoto.label}</span>
-              <button
-                type="button"
-                onClick={() => setZoomedPhoto(null)}
-                className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white"
-              >
-                Close
-              </button>
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={zoomedPhoto.url}
-              alt={zoomedPhoto.label}
-              className="max-h-[82dvh] max-w-full rounded-xl bg-white object-contain"
-            />
-          </div>
-        </div>
+      {/* Shared View ID & Details Review Modal */}
+      {reviewUser && (
+        <RegistrationReviewModal
+          user={reviewUser}
+          campusName={campusMap[reviewUser.campus_id]?.name ?? ""}
+          headerLabel="System Admin • Registration Verification"
+          onClose={() => setReviewUser(null)}
+          onCompleted={handleReviewCompleted}
+        />
       )}
     </div>
   );

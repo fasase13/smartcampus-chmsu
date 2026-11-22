@@ -21,7 +21,12 @@ export default async function CampusAdminPage({ params }) {
     redirect("/pending-approval");
   }
 
-  if (![ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN].includes(profile.role)) {
+  // Strict separation of duties: superadmin cannot operate inside /[campus]/admin
+  if (profile.role === ROLES.SUPERADMIN) {
+    redirect("/superadmin");
+  }
+
+  if (profile.role !== ROLES.CAMPUS_ADMIN) {
     const userCampusSlug = profile.campuses?.slug ?? "talisay";
     redirect(
       `${getDefaultRouteForRole(profile.role, userCampusSlug)}?error=unauthorized`
@@ -52,7 +57,7 @@ export default async function CampusAdminPage({ params }) {
     supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, show_on_kiosk, is_active, created_at"
       )
       .eq("campus_id", campus.id)
       .order("created_at", { ascending: false }),

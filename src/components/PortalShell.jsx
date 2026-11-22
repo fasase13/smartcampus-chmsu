@@ -45,7 +45,7 @@ export default function PortalShell({
       href: `/${campusSlug}/admin`,
       label: "Campus Admin",
       icon: ShieldCheck,
-      visible: [ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN].includes(profile?.role),
+      visible: profile?.role === ROLES.CAMPUS_ADMIN,
     },
     {
       href: "/management",

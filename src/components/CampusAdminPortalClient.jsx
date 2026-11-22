@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -23,10 +22,9 @@ import {
   UserCheck,
   Users,
   X,
-  XCircle,
-  ZoomIn,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import RegistrationReviewModal from "@/components/RegistrationReviewModal";
 import {
   ANNOUNCEMENT_CATEGORIES,
   ANNOUNCEMENT_PRIORITIES,
@@ -34,7 +32,6 @@ import {
   DOCUMENT_STATUS_META,
   ROLE_LABELS,
   ROLES,
-  STORAGE_BUCKETS,
   getCampusAdminTitle,
 } from "@/lib/constants";
 
@@ -75,7 +72,6 @@ export default function CampusAdminPortalClient({
 }) {
   const router = useRouter();
   const campusAdminTitle = getCampusAdminTitle(campus.slug, campus.name);
-  const isSuperadmin = profile.role === ROLES.SUPERADMIN;
 
   const [activeTab, setActiveTab] = useState("registrations");
   const [signingOut, setSigningOut] = useState(false);
@@ -86,16 +82,8 @@ export default function CampusAdminPortalClient({
   const [documents, setDocuments] = useState(initialDocuments);
   const [runningSla, setRunningSla] = useState(false);
 
-  // Pending ID review modal
+  // Pending review modal target
   const [reviewUser, setReviewUser] = useState(null);
-  const [reviewRole, setReviewRole] = useState("student");
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [showRejectBox, setShowRejectBox] = useState(false);
-  const [loadingIdPhotos, setLoadingIdPhotos] = useState(false);
-  const [idPhotoUrls, setIdPhotoUrls] = useState({ front: "", back: "" });
-  const [idPhotoError, setIdPhotoError] = useState("");
-  const [submittingReview, setSubmittingReview] = useState(false);
-  const [zoomedPhoto, setZoomedPhoto] = useState(null);
 
   // Campus announcements form
   const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT);
@@ -113,7 +101,7 @@ export default function CampusAdminPortalClient({
     const { data } = await supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, show_on_kiosk, is_active, created_at"
       )
       .eq("campus_id", campus.id)
       .order("created_at", { ascending: false });
@@ -217,109 +205,19 @@ export default function CampusAdminPortalClient({
     [documents]
   );
 
-  // Pending ID Review Modal
-  async function openReviewModal(target) {
-    setReviewUser(target);
-    const defaultRole = CAMPUS_ADMIN_ASSIGNABLE_ROLES.includes(
-      target.requested_role
-    )
-      ? target.requested_role
-      : "student";
-    setReviewRole(defaultRole);
-    setRejectionReason("");
-    setShowRejectBox(false);
-    setIdPhotoUrls({ front: "", back: "" });
-    setIdPhotoError("");
-    setZoomedPhoto(null);
-
-    if (!target.id_front_path && !target.id_back_path) {
-      setIdPhotoError("No ID photos were uploaded for this registrant.");
-      return;
-    }
-
-    setLoadingIdPhotos(true);
-    try {
-      const supabase = createClient();
-      const [frontRes, backRes] = await Promise.all([
-        target.id_front_path
-          ? supabase.storage
-              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-              .createSignedUrl(target.id_front_path, 300)
-          : Promise.resolve({ data: null, error: null }),
-        target.id_back_path
-          ? supabase.storage
-              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-              .createSignedUrl(target.id_back_path, 300)
-          : Promise.resolve({ data: null, error: null }),
-      ]);
-
-      if (frontRes.error || backRes.error) {
-        setIdPhotoError(
-          frontRes.error?.message ||
-            backRes.error?.message ||
-            "Unable to load signed ID photos."
-        );
-      }
-
-      setIdPhotoUrls({
-        front: frontRes.data?.signedUrl ?? "",
-        back: backRes.data?.signedUrl ?? "",
-      });
-    } finally {
-      setLoadingIdPhotos(false);
-    }
-  }
-
-  function closeReviewModal() {
+  // Callback after RegistrationReviewModal completes activate / return / reject
+  async function handleReviewCompleted(decision, target) {
     setReviewUser(null);
-    setIdPhotoUrls({ front: "", back: "" });
-    setIdPhotoError("");
-    setShowRejectBox(false);
-    setRejectionReason("");
-    setZoomedPhoto(null);
-  }
-
-  async function handleReviewDecision(decision) {
-    if (!reviewUser) return;
-    if (decision === "reject" && !rejectionReason.trim()) {
-      setFeedback({
-        type: "error",
-        message: "Please provide a brief reason before rejecting.",
-      });
-      return;
-    }
-
-    setSubmittingReview(true);
-    setFeedback(null);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.rpc("review_user_registration", {
-        p_user_id: reviewUser.id,
-        p_decision: decision,
-        p_assigned_role: reviewRole,
-        p_campus_id: campus.id,
-        p_rejection_reason:
-          decision === "reject" ? rejectionReason.trim() : null,
-      });
-
-      if (error) {
-        setFeedback({ type: "error", message: error.message });
-        return;
-      }
-
-      const name = reviewUser.full_name;
-      closeReviewModal();
-      await refreshUsers();
-      setFeedback({
-        type: decision === "approve" ? "success" : "warning",
-        message:
-          decision === "approve"
-            ? `Approved ${name} as ${ROLE_LABELS[reviewRole] ?? reviewRole} for CHMSU ${campus.name}.`
-            : `Declined registration for ${name}.`,
-      });
-    } finally {
-      setSubmittingReview(false);
-    }
+    await refreshUsers();
+    setFeedback({
+      type: decision === "activate" ? "success" : "warning",
+      message:
+        decision === "activate"
+          ? `Activated account for ${target.full_name} at CHMSU ${campus.name}.`
+          : decision === "return"
+            ? `Returned registration for ${target.full_name} for correction.`
+            : `Rejected registration and permanently banned ${target.email}.`,
+    });
   }
 
   // Campus Announcement CRUD (locked to campus.id)
@@ -568,18 +466,6 @@ export default function CampusAdminPortalClient({
               </button>
             );
           })}
-
-          {isSuperadmin && (
-            <div className="mt-2 border-t border-white/10 pt-2">
-              <Link
-                href="/superadmin"
-                className="flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-xs font-medium text-white/80 hover:bg-white/10 hover:text-white"
-              >
-                <ShieldCheck className="h-4 w-4 shrink-0 text-chmsu-gold" />
-                Back to Superadmin
-              </Link>
-            </div>
-          )}
         </nav>
 
         <div className="border-t border-white/10 p-4">
@@ -590,7 +476,7 @@ export default function CampusAdminPortalClient({
             <p className="truncate text-xs text-white/75">{profile.email}</p>
             <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-chmsu-gold px-2.5 py-0.5 text-[11px] font-bold text-chmsu-forest">
               <ShieldCheck className="h-3 w-3" />
-              {isSuperadmin ? "Superadmin" : campusAdminTitle}
+              {campusAdminTitle}
             </span>
           </div>
 
@@ -670,11 +556,11 @@ export default function CampusAdminPortalClient({
                     <table className="w-full min-w-[700px] border-collapse text-left text-sm">
                       <thead>
                         <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
-                          <th className="px-5 py-3">ID Number</th>
+                          <th className="px-5 py-3">School ID</th>
                           <th className="px-4 py-3">Applicant</th>
                           <th className="px-4 py-3">Requested Role</th>
                           <th className="px-4 py-3">Submitted</th>
-                          <th className="px-5 py-3 text-right">Action</th>
+                          <th className="px-5 py-3 text-left">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-chmsu-border">
@@ -692,6 +578,11 @@ export default function CampusAdminPortalClient({
                               </p>
                               <p className="text-xs text-slate-500">
                                 {u.department || "No department"}
+                                {u.program_or_course
+                                  ? ` • ${u.program_or_course}`
+                                  : u.office_location
+                                    ? ` • ${u.office_location}`
+                                    : ""}
                               </p>
                             </td>
                             <td className="px-4 py-3.5">
@@ -703,14 +594,14 @@ export default function CampusAdminPortalClient({
                             <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">
                               {formatDateTime(u.created_at)}
                             </td>
-                            <td className="px-5 py-3.5 text-right">
+                            <td className="px-5 py-3.5 text-left">
                               <button
                                 type="button"
-                                onClick={() => openReviewModal(u)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-3.5 py-2 text-xs font-semibold text-white hover:bg-chmsu-green"
+                                onClick={() => setReviewUser(u)}
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-chmsu-forest px-3.5 py-2 text-xs font-semibold text-white hover:bg-chmsu-green"
                               >
                                 <Eye className="h-3.5 w-3.5" />
-                                View ID Photos
+                                View ID &amp; Details
                               </button>
                             </td>
                           </tr>
@@ -1193,196 +1084,15 @@ export default function CampusAdminPortalClient({
         </main>
       </div>
 
-      {/* View ID Photos Modal (Campus Scoped) */}
+      {/* Shared View ID & Details Review Modal (Campus Scoped) */}
       {reviewUser && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Verify School ID Photos"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/65 p-4 backdrop-blur-xs"
-        >
-          <div className="flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-2xl">
-            <div className="flex items-center justify-between bg-chmsu-forest px-5 py-4 text-white">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-chmsu-gold">
-                  {campusAdminTitle} &bull; ID Verification (5 min signed URL)
-                </p>
-                <h3 className="text-base font-bold">
-                  {reviewUser.full_name}{" "}
-                  <span className="ml-1.5 rounded bg-white/15 px-2 py-0.5 font-mono text-xs tracking-widest">
-                    {reviewUser.employee_or_student_id ?? "No ID"}
-                  </span>
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={closeReviewModal}
-                className="rounded-lg p-1.5 text-white/80 hover:bg-white/10"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 space-y-5 overflow-y-auto p-5">
-              {idPhotoError && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                  {idPhotoError}
-                </div>
-              )}
-
-              {loadingIdPhotos ? (
-                <div className="flex h-48 items-center justify-center gap-2 rounded-xl border border-chmsu-border bg-slate-50 text-xs text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin text-chmsu-green" />
-                  Loading private ID photos...
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  {[
-                    { label: "Front of School ID", url: idPhotoUrls.front },
-                    { label: "Back of School ID", url: idPhotoUrls.back },
-                  ].map((photo) => (
-                    <div
-                      key={photo.label}
-                      className="overflow-hidden rounded-xl border border-chmsu-border bg-slate-50"
-                    >
-                      <div className="flex items-center justify-between border-b border-chmsu-border bg-white px-3 py-2 text-xs font-bold text-chmsu-forest">
-                        <span>{photo.label}</span>
-                        {photo.url && (
-                          <button
-                            type="button"
-                            onClick={() => setZoomedPhoto(photo)}
-                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-chmsu-navy"
-                          >
-                            <ZoomIn className="h-3.5 w-3.5" />
-                            Zoom
-                          </button>
-                        )}
-                      </div>
-                      {photo.url ? (
-                        <button
-                          type="button"
-                          onClick={() => setZoomedPhoto(photo)}
-                          className="block w-full cursor-zoom-in p-2"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={photo.url}
-                            alt={photo.label}
-                            className="h-56 w-full rounded-lg bg-white object-contain"
-                          />
-                        </button>
-                      ) : (
-                        <div className="flex h-56 items-center justify-center text-xs text-slate-400">
-                          No image uploaded
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 gap-3 rounded-xl border border-chmsu-border bg-white p-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600">
-                    Campus (Locked)
-                  </label>
-                  <input
-                    type="text"
-                    disabled
-                    value={`CHMSU ${campus.name}`}
-                    className="mt-1 w-full rounded-xl border border-chmsu-border bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600">
-                    Assigned Role
-                  </label>
-                  <select
-                    value={reviewRole}
-                    onChange={(e) => setReviewRole(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                  >
-                    {CAMPUS_ADMIN_ASSIGNABLE_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {ROLE_LABELS[r] ?? r}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {showRejectBox && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                  <label className="block text-xs font-bold uppercase text-red-800">
-                    Rejection Reason
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    placeholder="Explain why this registration is declined..."
-                    className="mt-1.5 w-full rounded-xl border border-red-200 bg-white px-3 py-2 text-sm"
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-chmsu-border bg-chmsu-canvas px-5 py-3.5">
-              {!showRejectBox ? (
-                <button
-                  type="button"
-                  disabled={submittingReview}
-                  onClick={() => setShowRejectBox(true)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
-                >
-                  <XCircle className="h-4 w-4" />
-                  Reject...
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowRejectBox(false)}
-                    className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-600"
-                  >
-                    Back
-                  </button>
-                  <button
-                    type="button"
-                    disabled={submittingReview}
-                    onClick={() => handleReviewDecision("reject")}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white"
-                  >
-                    Confirm Reject
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={closeReviewModal}
-                  className="rounded-xl border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={submittingReview}
-                  onClick={() => handleReviewDecision("approve")}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-bold text-white hover:bg-chmsu-green"
-                >
-                  {submittingReview ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
-                  Approve &amp; Activate
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <RegistrationReviewModal
+          user={reviewUser}
+          campusName={campus.name}
+          headerLabel={`${campusAdminTitle} • Registration Verification`}
+          onClose={() => setReviewUser(null)}
+          onCompleted={handleReviewCompleted}
+        />
       )}
 
       {/* Edit Campus User Modal */}
@@ -1513,38 +1223,6 @@ export default function CampusAdminPortalClient({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Lightbox */}
-      {zoomedPhoto && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setZoomedPhoto(null)}
-          className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-slate-950/90 p-4"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="flex max-h-[92dvh] max-w-5xl flex-col items-center gap-3"
-          >
-            <div className="flex w-full items-center justify-between text-white">
-              <span className="text-sm font-bold">{zoomedPhoto.label}</span>
-              <button
-                type="button"
-                onClick={() => setZoomedPhoto(null)}
-                className="rounded-lg bg-white/15 px-3 py-1.5 text-xs font-semibold text-white"
-              >
-                Close
-              </button>
-            </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={zoomedPhoto.url}
-              alt={zoomedPhoto.label}
-              className="max-h-[82dvh] max-w-full rounded-xl bg-white object-contain"
-            />
           </div>
         </div>
       )}

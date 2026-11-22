@@ -12,7 +12,11 @@ export default async function PendingApprovalPage() {
     redirect("/");
   }
 
-  if (profile && profile.profile_completed === false) {
+  if (
+    profile &&
+    (profile.profile_completed === false ||
+      profile.approval_status === "returned")
+  ) {
     redirect("/register/complete");
   }
 

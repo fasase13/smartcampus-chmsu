@@ -92,7 +92,10 @@ export async function POST(request) {
     const campusSlug = profile.campuses?.slug ?? "talisay";
 
     let redirectTo;
-    if (profile.profile_completed === false) {
+    if (
+      profile.profile_completed === false ||
+      profile.approval_status === "returned"
+    ) {
       redirectTo = "/register/complete";
     } else if (profile.approval_status !== "approved" || !profile.is_active) {
       redirectTo = "/pending-approval";

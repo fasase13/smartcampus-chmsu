@@ -44,7 +44,7 @@ export default async function SuperadminPortalPage() {
     supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, job_title, office_location, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, show_on_kiosk, is_active, created_at"
       )
       .order("created_at", { ascending: false }),
     supabase
@@ -58,7 +58,7 @@ export default async function SuperadminPortalPage() {
     supabase
       .from("documents")
       .select(
-        "id, origin_campus_id, current_campus_id, status, is_delayed, due_at, created_at"
+        "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
       )
       .order("created_at", { ascending: false })
       .limit(500),

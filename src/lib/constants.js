@@ -97,7 +97,7 @@ export function getCampusAdminTitle(slug, fallbackName) {
  * Public routes (/[campus]/kiosk) are handled separately.
  */
 export const PORTAL_ROLE_ACCESS = {
-  admin: [ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN],
+  admin: [ROLES.CAMPUS_ADMIN],
   faculty: [
     ROLES.FACULTY,
     ROLES.STAFF,

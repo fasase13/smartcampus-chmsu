@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  AlertTriangle,
   Building2,
   CheckCircle2,
   CreditCard,
@@ -25,9 +26,23 @@ import {
   SELF_REGISTER_ROLES,
   STORAGE_BUCKETS,
 } from "@/lib/constants";
+import {
+  getDepartmentsForCampusAndRole,
+  getSubOptionsForSelection,
+} from "@/lib/chmsuDirectory";
 import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
 
 const ID_NUMBER_REGEX = /^\d{8}$/;
+
+const FIELD_LABELS = {
+  campus_id: "Campus",
+  requested_role: "Role",
+  employee_or_student_id: "School ID",
+  full_name: "Full Name",
+  department: "College / Department",
+  program_or_office: "Program / Office",
+  id_photos: "School ID Photos",
+};
 
 function extensionForMime(mimeType) {
   if (mimeType === "image/png") return "png";
@@ -53,26 +68,136 @@ export default function CompleteRegistrationForm({
   userId,
   verifiedEmail,
   preselectedSlug = "",
+  profile = null,
+  existingFrontUrl = "",
+  existingBackUrl = "",
 }) {
   const router = useRouter();
 
-  const initialCampus =
-    campuses.find((c) => c.slug === preselectedSlug) ?? campuses[0] ?? null;
+  const isReturned = profile?.approval_status === "returned";
+  const flaggedFields = Array.isArray(profile?.returned_fields)
+    ? profile.returned_fields
+    : [];
+  const snapshot = profile?.returned_snapshot ?? null;
 
-  const [campusId, setCampusId] = useState(initialCampus?.id ?? "");
-  const [idNumber, setIdNumber] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [requestedRole, setRequestedRole] = useState("student");
-  const [department, setDepartment] = useState("");
+  const isFlagged = (key) => isReturned && flaggedFields.includes(key);
+
+  const initialCampusId = isReturned
+    ? isFlagged("campus_id")
+      ? ""
+      : profile?.campus_id ?? ""
+    : campuses.find((c) => c.slug === preselectedSlug)?.id ??
+      campuses[0]?.id ??
+      "";
+
+  const [campusId, setCampusId] = useState(initialCampusId);
+  const [idNumber, setIdNumber] = useState(
+    isReturned && !isFlagged("employee_or_student_id")
+      ? profile?.employee_or_student_id ?? ""
+      : ""
+  );
+  const [fullName, setFullName] = useState(
+    isReturned && !isFlagged("full_name") ? profile?.full_name ?? "" : ""
+  );
+  const [requestedRole, setRequestedRole] = useState(
+    isReturned
+      ? isFlagged("requested_role")
+        ? ""
+        : profile?.requested_role ?? "student"
+      : "student"
+  );
+  const [department, setDepartment] = useState(
+    isReturned && !isFlagged("department") ? profile?.department ?? "" : ""
+  );
+  const [programOrCourse, setProgramOrCourse] = useState(
+    isReturned && !isFlagged("program_or_office")
+      ? profile?.program_or_course ?? ""
+      : ""
+  );
+  const [officeLocation, setOfficeLocation] = useState(
+    isReturned && !isFlagged("program_or_office")
+      ? profile?.office_location ?? ""
+      : ""
+  );
+
+  // Existing valid photo paths retained if id_photos was NOT flagged
+  const canReuseExistingPhotos =
+    isReturned &&
+    !isFlagged("id_photos") &&
+    Boolean(profile?.id_front_path && profile?.id_back_path);
 
   const [frontFile, setFrontFile] = useState(null);
   const [frontPreview, setFrontPreview] = useState("");
   const [backFile, setBackFile] = useState(null);
   const [backPreview, setBackPreview] = useState("");
+  const [usingExistingFront, setUsingExistingFront] = useState(
+    canReuseExistingPhotos
+  );
+  const [usingExistingBack, setUsingExistingBack] = useState(
+    canReuseExistingPhotos
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const selectedCampusSlug =
+    campuses.find((c) => c.id === campusId)?.slug ?? "";
+  const isStudentRole = requestedRole === "student";
+  const departmentOptions =
+    selectedCampusSlug && requestedRole
+      ? getDepartmentsForCampusAndRole(selectedCampusSlug, requestedRole)
+      : [];
+  const subOptions =
+    selectedCampusSlug && requestedRole && department
+      ? getSubOptionsForSelection(selectedCampusSlug, requestedRole, department)
+      : [];
+
+  // Inline duplicate-invalid-value checks against returned_snapshot
+  const invalidDuplicateMsg =
+    "This value was marked invalid by the admin. Please enter a different value.";
+
+  const isCampusDuplicate = Boolean(
+    isFlagged("campus_id") &&
+      snapshot?.campus_id &&
+      campusId &&
+      campusId === snapshot.campus_id
+  );
+  const isIdDuplicate = Boolean(
+    isFlagged("employee_or_student_id") &&
+      snapshot?.employee_or_student_id &&
+      idNumber.trim() === snapshot.employee_or_student_id
+  );
+  const isNameDuplicate = Boolean(
+    isFlagged("full_name") &&
+      snapshot?.full_name &&
+      fullName.trim().toLowerCase() ===
+        String(snapshot.full_name).trim().toLowerCase()
+  );
+  const isRoleDuplicate = Boolean(
+    isFlagged("requested_role") &&
+      snapshot?.requested_role &&
+      requestedRole &&
+      requestedRole === snapshot.requested_role
+  );
+  const isDeptDuplicate = Boolean(
+    isFlagged("department") &&
+      snapshot?.department &&
+      department &&
+      department.trim().toLowerCase() ===
+        String(snapshot.department).trim().toLowerCase()
+  );
+  const isSubDuplicate = Boolean(
+    isFlagged("program_or_office") &&
+      ((isStudentRole &&
+        snapshot?.program_or_course &&
+        programOrCourse.trim().toLowerCase() ===
+          String(snapshot.program_or_course).trim().toLowerCase()) ||
+        (!isStudentRole &&
+          snapshot?.office_location &&
+          officeLocation.trim().toLowerCase() ===
+            String(snapshot.office_location).trim().toLowerCase()))
+  );
 
   useEffect(() => {
     return () => {
@@ -102,9 +227,11 @@ export default function CompleteRegistrationForm({
     if (side === "front") {
       setFrontFile(file);
       setFrontPreview(previewUrl);
+      setUsingExistingFront(false);
     } else {
       setBackFile(file);
       setBackPreview(previewUrl);
+      setUsingExistingBack(false);
     }
   }
 
@@ -112,9 +239,11 @@ export default function CompleteRegistrationForm({
     if (side === "front") {
       setFrontFile(null);
       setFrontPreview("");
+      setUsingExistingFront(false);
     } else {
       setBackFile(null);
       setBackPreview("");
+      setUsingExistingBack(false);
     }
   }
 
@@ -137,6 +266,22 @@ export default function CompleteRegistrationForm({
     const cleanId = idNumber.trim();
     const cleanName = fullName.trim();
     const cleanDept = department.trim();
+    const cleanProgram = programOrCourse.trim();
+    const cleanOffice = officeLocation.trim();
+
+    if (
+      isCampusDuplicate ||
+      isIdDuplicate ||
+      isNameDuplicate ||
+      isRoleDuplicate ||
+      isDeptDuplicate ||
+      isSubDuplicate
+    ) {
+      setErrorMessage(
+        "One or more flagged fields still contain the previous invalid value. Please correct all highlighted fields before resubmitting."
+      );
+      return;
+    }
 
     if (!campusId) {
       setErrorMessage("Please select your CHMSU campus.");
@@ -156,75 +301,101 @@ export default function CompleteRegistrationForm({
       setErrorMessage("Please select a valid role.");
       return;
     }
-    if (cleanDept.length < 2) {
-      setErrorMessage("Please enter your College or Department.");
+    if (!cleanDept) {
+      setErrorMessage("Please select your College / Department.");
+      return;
+    }
+    if (isStudentRole && !cleanProgram) {
+      setErrorMessage("Please select your degree Program.");
+      return;
+    }
+    if (!isStudentRole && !cleanOffice) {
+      setErrorMessage("Please select your Office.");
       return;
     }
 
-    const frontErr = validateIdImageFile(frontFile, "Front of School ID");
-    if (frontErr) {
-      setErrorMessage(frontErr);
-      return;
+    if (!usingExistingFront) {
+      const frontErr = validateIdImageFile(frontFile, "Front of School ID");
+      if (frontErr) {
+        setErrorMessage(frontErr);
+        return;
+      }
     }
-    const backErr = validateIdImageFile(backFile, "Back of School ID");
-    if (backErr) {
-      setErrorMessage(backErr);
-      return;
+    if (!usingExistingBack) {
+      const backErr = validateIdImageFile(backFile, "Back of School ID");
+      if (backErr) {
+        setErrorMessage(backErr);
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
       const supabase = createClient();
 
-      // 1. Verify 8-digit ID number availability
-      const { data: isAvailable, error: availError } = await supabase.rpc(
-        "check_id_number_available",
-        { p_id_number: cleanId }
-      );
-
-      if (availError) {
-        setErrorMessage(
-          `Unable to verify ID number availability: ${availError.message}`
+      // 1. Check 8-digit ID availability only if new or changed from own current value
+      if (!profile?.employee_or_student_id || cleanId !== profile.employee_or_student_id) {
+        const { data: isAvailable, error: availError } = await supabase.rpc(
+          "check_id_number_available",
+          { p_id_number: cleanId }
         );
-        return;
+
+        if (availError) {
+          setErrorMessage(
+            `Unable to verify ID number availability: ${availError.message}`
+          );
+          return;
+        }
+
+        if (!isAvailable) {
+          setErrorMessage(
+            `ID Number ${cleanId} is already registered to another account.`
+          );
+          return;
+        }
       }
 
-      if (!isAvailable) {
-        setErrorMessage(
-          `ID Number ${cleanId} is already registered to another account.`
+      // 2. Upload replacement or new ID photos using unique timestamped paths
+      const ts = Date.now();
+      let finalFrontPath = profile?.id_front_path ?? "";
+      let finalBackPath = profile?.id_back_path ?? "";
+
+      const uploads = [];
+      if (!usingExistingFront && frontFile) {
+        finalFrontPath = `${userId}/front_${ts}.${extensionForMime(frontFile.type)}`;
+        uploads.push(
+          supabase.storage
+            .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
+            .upload(finalFrontPath, frontFile, {
+              contentType: frontFile.type,
+              upsert: true,
+            })
         );
-        return;
+      }
+      if (!usingExistingBack && backFile) {
+        finalBackPath = `${userId}/back_${ts}.${extensionForMime(backFile.type)}`;
+        uploads.push(
+          supabase.storage
+            .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
+            .upload(finalBackPath, backFile, {
+              contentType: backFile.type,
+              upsert: true,
+            })
+        );
       }
 
-      // 2. Upload Front & Back School ID photos to private `id-verifications` bucket
-      const frontPath = `${userId}/front.${extensionForMime(frontFile.type)}`;
-      const backPath = `${userId}/back.${extensionForMime(backFile.type)}`;
-
-      const [frontUpload, backUpload] = await Promise.all([
-        supabase.storage
-          .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-          .upload(frontPath, frontFile, {
-            contentType: frontFile.type,
-            upsert: true,
-          }),
-        supabase.storage
-          .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-          .upload(backPath, backFile, {
-            contentType: backFile.type,
-            upsert: true,
-          }),
-      ]);
-
-      if (frontUpload.error || backUpload.error) {
-        setErrorMessage(
-          `ID photo upload failed: ${
-            frontUpload.error?.message || backUpload.error?.message
-          }. Please try again.`
-        );
-        return;
+      if (uploads.length > 0) {
+        const results = await Promise.all(uploads);
+        const failed = results.find((r) => r.error);
+        if (failed?.error) {
+          setErrorMessage(
+            `ID photo upload failed: ${failed.error.message}. Please try again.`
+          );
+          return;
+        }
       }
 
-      // 3. Complete Step 3 profile credentials via SECURITY DEFINER RPC
+      // 3. Submit credentials via SECURITY DEFINER RPC
       const { error: completeError } = await supabase.rpc(
         "complete_registration_credentials",
         {
@@ -233,8 +404,10 @@ export default function CompleteRegistrationForm({
           p_full_name: cleanName,
           p_requested_role: requestedRole,
           p_department: cleanDept,
-          p_front_path: frontPath,
-          p_back_path: backPath,
+          p_front_path: finalFrontPath,
+          p_back_path: finalBackPath,
+          p_program_or_course: isStudentRole ? cleanProgram : null,
+          p_office_location: isStudentRole ? null : cleanOffice,
         }
       );
 
@@ -243,7 +416,6 @@ export default function CompleteRegistrationForm({
         return;
       }
 
-      // 4. Redirect to Pending Admin Verification screen
       router.push("/pending-approval");
       router.refresh();
     } catch {
@@ -254,6 +426,20 @@ export default function CompleteRegistrationForm({
       setSubmitting(false);
     }
   }
+
+  const fieldRing = (flagged, isDup) =>
+    isDup
+      ? "border-red-400 bg-red-50/40 focus:border-red-500 focus:ring-red-200"
+      : flagged
+        ? "border-amber-400 bg-amber-50/40 focus:border-amber-600 focus:ring-amber-200"
+        : "border-chmsu-border bg-white focus:border-chmsu-green focus:ring-chmsu-green/20";
+
+  const displayedFrontPreview = usingExistingFront
+    ? existingFrontUrl
+    : frontPreview;
+  const displayedBackPreview = usingExistingBack
+    ? existingBackUrl
+    : backPreview;
 
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900">
@@ -295,7 +481,11 @@ export default function CompleteRegistrationForm({
       <main className="mx-auto flex w-full max-w-2xl flex-1 items-start justify-center px-4 py-8 sm:py-10">
         <div className="w-full overflow-hidden rounded-2xl border border-chmsu-border bg-chmsu-card shadow-xs">
           {/* Header */}
-          <div className="bg-chmsu-forest px-6 py-5 text-white">
+          <div
+            className={`px-6 py-5 text-white ${
+              isReturned ? "bg-amber-700" : "bg-chmsu-forest"
+            }`}
+          >
             <div className="flex items-center gap-3.5">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white p-1">
                 <Image
@@ -308,44 +498,59 @@ export default function CompleteRegistrationForm({
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-widest text-chmsu-gold">
-                  Step 3 of 3 &bull; Final Step
+                  {isReturned
+                    ? "Action Required • Returned Registration"
+                    : "Step 3 of 3 • Final Step"}
                 </p>
                 <h1 className="text-lg font-bold tracking-tight sm:text-xl">
-                  School Credentials &amp; ID Verification
+                  {isReturned
+                    ? "Correct Flagged Registration Details"
+                    : "School Credentials & ID Verification"}
                 </h1>
               </div>
             </div>
           </div>
 
-          {/* 3-Step Indicator */}
-          <ol className="grid grid-cols-3 gap-2 border-b border-chmsu-border bg-chmsu-canvas px-6 py-3 text-xs">
-            <li className="flex items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-chmsu-green text-white">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              </span>
-              <span className="truncate font-semibold text-chmsu-forest">
-                Account
-              </span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-chmsu-green text-white">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              </span>
-              <span className="truncate font-semibold text-chmsu-forest">
-                Verify Email
-              </span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-chmsu-forest text-[11px] font-bold text-chmsu-gold">
-                3
-              </span>
-              <span className="truncate font-semibold text-chmsu-forest">
-                School ID
-              </span>
-            </li>
-          </ol>
-
           <form onSubmit={handleSubmit} className="space-y-5 p-6">
+            {/* Prominent Returned-for-Correction Banner */}
+            {isReturned && (
+              <div
+                role="alert"
+                className="space-y-2.5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+              >
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                  <div>
+                    <p className="font-bold">
+                      Registration Returned for Correction
+                    </p>
+                    {profile?.review_notes && (
+                      <p className="mt-1 text-xs leading-relaxed text-amber-900">
+                        <span className="font-semibold">Admin Note:</span>{" "}
+                        {profile.review_notes}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {flaggedFields.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wide text-amber-800">
+                      Fields to fix:
+                    </span>
+                    {flaggedFields.map((key) => (
+                      <span
+                        key={key}
+                        className="rounded-full bg-amber-200 px-2.5 py-0.5 text-[11px] font-bold text-amber-950"
+                      >
+                        {FIELD_LABELS[key] ?? key}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Green Email Verified Badge */}
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
               <div className="flex items-center gap-2 text-xs font-bold text-emerald-900">
@@ -375,6 +580,11 @@ export default function CompleteRegistrationForm({
                   className="block text-sm font-semibold text-slate-700"
                 >
                   CHMSU Campus <span className="text-red-600">*</span>
+                  {isFlagged("campus_id") && (
+                    <span className="ml-1.5 text-[11px] font-bold text-amber-700">
+                      (Needs correction)
+                    </span>
+                  )}
                 </label>
                 <div className="relative mt-1.5">
                   <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -382,9 +592,18 @@ export default function CompleteRegistrationForm({
                     id="campus"
                     required
                     value={campusId}
-                    onChange={(e) => setCampusId(e.target.value)}
-                    className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                    onChange={(e) => {
+                      setCampusId(e.target.value);
+                      setDepartment("");
+                      setProgramOrCourse("");
+                      setOfficeLocation("");
+                    }}
+                    className={`w-full rounded-xl border py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
+                      isFlagged("campus_id"),
+                      isCampusDuplicate
+                    )}`}
                   >
+                    <option value="">Select CHMSU Campus...</option>
                     {campuses.map((c) => (
                       <option key={c.id} value={c.id}>
                         CHMSU {c.name}
@@ -392,6 +611,11 @@ export default function CompleteRegistrationForm({
                     ))}
                   </select>
                 </div>
+                {isCampusDuplicate && (
+                  <p className="mt-1 text-xs font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -399,7 +623,7 @@ export default function CompleteRegistrationForm({
                   htmlFor="id-number"
                   className="block text-sm font-semibold text-slate-700"
                 >
-                  8-Digit ID Number <span className="text-red-600">*</span>
+                  School ID <span className="text-red-600">*</span>
                 </label>
                 <div className="relative mt-1.5">
                   <CreditCard className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -415,12 +639,21 @@ export default function CompleteRegistrationForm({
                       setIdNumber(e.target.value.replace(/\D/g, "").slice(0, 8))
                     }
                     placeholder="20230399"
-                    className="w-44 rounded-xl border border-chmsu-border bg-white py-2.5 pl-9 pr-3 text-center font-mono text-sm font-semibold tracking-widest text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                    className={`w-44 rounded-xl border py-2.5 pl-9 pr-3 text-center font-mono text-sm font-semibold tracking-widest text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
+                      isFlagged("employee_or_student_id"),
+                      isIdDuplicate
+                    )}`}
                   />
                 </div>
-                <p className="mt-1 text-[11px] text-slate-500">
-                  Used for Campus Portal Login
-                </p>
+                {isIdDuplicate ? (
+                  <p className="mt-1 max-w-44 text-[11px] font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Used for Portal Login
+                  </p>
+                )}
               </div>
             </div>
 
@@ -431,6 +664,11 @@ export default function CompleteRegistrationForm({
                 className="block text-sm font-semibold text-slate-700"
               >
                 Full Name <span className="text-red-600">*</span>
+                {isFlagged("full_name") && (
+                  <span className="ml-1.5 text-[11px] font-bold text-amber-700">
+                    (Needs correction)
+                  </span>
+                )}
               </label>
               <div className="relative mt-1.5">
                 <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -442,12 +680,20 @@ export default function CompleteRegistrationForm({
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g., Juan Dela Cruz"
-                  className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                  className={`w-full rounded-xl border py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
+                    isFlagged("full_name"),
+                    isNameDuplicate
+                  )}`}
                 />
               </div>
+              {isNameDuplicate && (
+                <p className="mt-1 text-xs font-semibold text-red-700">
+                  {invalidDuplicateMsg}
+                </p>
+              )}
             </div>
 
-            {/* Requested Role & College/Department */}
+            {/* Requested Role & Dynamic College/Department */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label
@@ -460,15 +706,29 @@ export default function CompleteRegistrationForm({
                   id="requested-role"
                   required
                   value={requestedRole}
-                  onChange={(e) => setRequestedRole(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                  onChange={(e) => {
+                    setRequestedRole(e.target.value);
+                    setDepartment("");
+                    setProgramOrCourse("");
+                    setOfficeLocation("");
+                  }}
+                  className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
+                    isFlagged("requested_role"),
+                    isRoleDuplicate
+                  )}`}
                 >
+                  <option value="">Select Role...</option>
                   {SELF_REGISTER_ROLES.map((r) => (
                     <option key={r} value={r}>
                       {ROLE_LABELS[r] ?? r}
                     </option>
                   ))}
                 </select>
+                {isRoleDuplicate && (
+                  <p className="mt-1 text-xs font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -476,19 +736,89 @@ export default function CompleteRegistrationForm({
                   htmlFor="department"
                   className="block text-sm font-semibold text-slate-700"
                 >
-                  College / Department <span className="text-red-600">*</span>
+                  {isStudentRole ? "College" : "College / Department"}{" "}
+                  <span className="text-red-600">*</span>
                 </label>
-                <input
+                <select
                   id="department"
-                  type="text"
                   required
+                  disabled={!campusId || !requestedRole}
                   value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  placeholder="e.g., College of Computer Studies"
-                  className="mt-1.5 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
-                />
+                  onChange={(e) => {
+                    setDepartment(e.target.value);
+                    setProgramOrCourse("");
+                    setOfficeLocation("");
+                  }}
+                  className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:bg-slate-100 ${fieldRing(
+                    isFlagged("department"),
+                    isDeptDuplicate
+                  )}`}
+                >
+                  <option value="">
+                    {isStudentRole
+                      ? "Select your College..."
+                      : "Select your College / Department..."}
+                  </option>
+                  {departmentOptions.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+                {isDeptDuplicate && (
+                  <p className="mt-1 text-xs font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                )}
               </div>
             </div>
+
+            {/* Cascading Program (Students) or Office (Non-Students) */}
+            {department && (
+              <div>
+                <label
+                  htmlFor={
+                    isStudentRole ? "program-or-course" : "office-location"
+                  }
+                  className="block text-sm font-semibold text-slate-700"
+                >
+                  {isStudentRole ? "Program" : "Office"}{" "}
+                  <span className="text-red-600">*</span>
+                </label>
+                <select
+                  id={isStudentRole ? "program-or-course" : "office-location"}
+                  required
+                  value={isStudentRole ? programOrCourse : officeLocation}
+                  onChange={(e) => {
+                    if (isStudentRole) {
+                      setProgramOrCourse(e.target.value);
+                    } else {
+                      setOfficeLocation(e.target.value);
+                    }
+                  }}
+                  className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
+                    isFlagged("program_or_office"),
+                    isSubDuplicate
+                  )}`}
+                >
+                  <option value="">
+                    {isStudentRole
+                      ? "Select your degree Program..."
+                      : "Select your Office..."}
+                  </option>
+                  {subOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                {isSubDuplicate && (
+                  <p className="mt-1 text-xs font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Front & Back School ID Photos */}
             <div className="space-y-2.5">
@@ -496,42 +826,56 @@ export default function CompleteRegistrationForm({
                 <p className="text-sm font-semibold text-slate-700">
                   School ID Verification Photos{" "}
                   <span className="text-red-600">*</span>
+                  {isFlagged("id_photos") && (
+                    <span className="ml-1.5 text-xs font-bold text-amber-700">
+                      (Please upload brand-new Front &amp; Back photos)
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-slate-500">
-                  Upload clear photos of both sides of your CHMSU ID (JPG, PNG,
-                  or WebP, max 5 MB each).
+                  {canReuseExistingPhotos
+                    ? "Your previously uploaded ID photos are kept. You may replace them if needed."
+                    : "Upload clear photos of both sides of your CHMSU ID (JPG, PNG, or WebP, max 5 MB each)."}
                 </p>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {/* Front ID */}
-                <div className="flex flex-col rounded-xl border border-dashed border-chmsu-border bg-chmsu-canvas p-3.5">
+                <div
+                  className={`flex flex-col rounded-xl border border-dashed p-3.5 ${
+                    isFlagged("id_photos")
+                      ? "border-amber-400 bg-amber-50/50"
+                      : "border-chmsu-border bg-chmsu-canvas"
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wide text-chmsu-forest">
                       1. Front of School ID
                     </span>
-                    {frontFile && (
+                    {(frontFile || usingExistingFront) && (
                       <button
                         type="button"
                         onClick={() => clearFile("front")}
                         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-50"
                       >
                         <X className="h-3 w-3" />
-                        Remove
+                        Replace
                       </button>
                     )}
                   </div>
 
-                  {frontPreview ? (
+                  {displayedFrontPreview ? (
                     <div className="mt-2.5 overflow-hidden rounded-lg border border-chmsu-border bg-white">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={frontPreview}
+                        src={displayedFrontPreview}
                         alt="Front of School ID preview"
                         className="h-40 w-full bg-slate-50 object-contain"
                       />
                       <p className="truncate border-t border-chmsu-border px-2.5 py-1.5 text-[11px] text-slate-600">
-                        {frontFile?.name}
+                        {usingExistingFront
+                          ? "Existing verified front photo"
+                          : frontFile?.name}
                       </p>
                     </div>
                   ) : (
@@ -560,33 +904,41 @@ export default function CompleteRegistrationForm({
                 </div>
 
                 {/* Back ID */}
-                <div className="flex flex-col rounded-xl border border-dashed border-chmsu-border bg-chmsu-canvas p-3.5">
+                <div
+                  className={`flex flex-col rounded-xl border border-dashed p-3.5 ${
+                    isFlagged("id_photos")
+                      ? "border-amber-400 bg-amber-50/50"
+                      : "border-chmsu-border bg-chmsu-canvas"
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold uppercase tracking-wide text-chmsu-forest">
                       2. Back of School ID
                     </span>
-                    {backFile && (
+                    {(backFile || usingExistingBack) && (
                       <button
                         type="button"
                         onClick={() => clearFile("back")}
                         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-50"
                       >
                         <X className="h-3 w-3" />
-                        Remove
+                        Replace
                       </button>
                     )}
                   </div>
 
-                  {backPreview ? (
+                  {displayedBackPreview ? (
                     <div className="mt-2.5 overflow-hidden rounded-lg border border-chmsu-border bg-white">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
-                        src={backPreview}
+                        src={displayedBackPreview}
                         alt="Back of School ID preview"
                         className="h-40 w-full bg-slate-50 object-contain"
                       />
                       <p className="truncate border-t border-chmsu-border px-2.5 py-1.5 text-[11px] text-slate-600">
-                        {backFile?.name}
+                        {usingExistingBack
+                          ? "Existing verified back photo"
+                          : backFile?.name}
                       </p>
                     </div>
                   ) : (
@@ -624,8 +976,8 @@ export default function CompleteRegistrationForm({
                   RA 10173 Data Privacy Protection:
                 </span>{" "}
                 Your ID number and School ID photos are stored in a private,
-                access-controlled bucket visible strictly to CHMSU System
-                Administrators for verification and are never displayed on
+                access-controlled bucket visible strictly to CHMSU Campus Admin
+                and System Admin for verification and are never displayed on
                 public kiosks.
               </p>
             </div>
@@ -638,12 +990,14 @@ export default function CompleteRegistrationForm({
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading ID photos &amp; submitting...
+                  Uploading &amp; submitting...
                 </>
               ) : (
                 <>
                   <UserCheck className="h-4 w-4" />
-                  Submit for Admin Review
+                  {isReturned
+                    ? "Resubmit Corrected Registration"
+                    : "Submit for Admin Review"}
                 </>
               )}
             </button>

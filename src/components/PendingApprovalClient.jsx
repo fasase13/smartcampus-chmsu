@@ -35,7 +35,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, campus_id, full_name, role, requested_role, employee_or_student_id, approval_status, rejection_reason, department, is_active, campuses:campus_id(id, code, slug, name)"
+          "id, campus_id, full_name, role, requested_role, employee_or_student_id, approval_status, review_notes, rejection_reason, department, program_or_course, office_location, is_active, campuses:campus_id(id, code, slug, name)"
         )
         .eq("id", userId)
         .single();
@@ -48,6 +48,12 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
       }
 
       setProfile(data);
+
+      if (data.approval_status === "returned") {
+        router.push("/register/complete");
+        router.refresh();
+        return;
+      }
 
       if (data.is_active && data.approval_status === "approved") {
         const campusSlug = data.campuses?.slug ?? "talisay";
@@ -144,7 +150,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
                 </p>
                 <h1 className="text-lg font-bold tracking-tight">
                   {isRejected
-                    ? "Registration Declined"
+                    ? "Registration Permanently Rejected"
                     : isPending
                       ? "Pending Admin Verification"
                       : "Account Inactive"}
@@ -158,12 +164,17 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
             {isRejected ? (
               <div
                 role="alert"
-                className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+                className="space-y-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"
               >
-                <p className="font-bold">Reason provided by Admin:</p>
-                <p className="mt-1">
-                  {profile?.rejection_reason ||
-                    "School ID verification could not be completed. Please contact your campus ICT/Admin office."}
+                <p className="font-bold">
+                  Your registration has been permanently rejected and this email
+                  address has been banned from registering on SmartCampus CHMSU.
+                </p>
+                <p className="text-xs leading-relaxed text-red-800">
+                  <span className="font-semibold">Reason:</span>{" "}
+                  {profile?.review_notes ||
+                    profile?.rejection_reason ||
+                    "Registration violated SmartCampus CHMSU verification policies."}
                 </p>
               </div>
             ) : isPending ? (
@@ -240,6 +251,28 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
                   </span>
                 </div>
               )}
+
+              {profile?.program_or_course && (
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Program
+                  </span>
+                  <span className="text-right font-medium text-slate-800">
+                    {profile.program_or_course}
+                  </span>
+                </div>
+              )}
+
+              {profile?.office_location && (
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Office
+                  </span>
+                  <span className="text-right font-medium text-slate-800">
+                    {profile.office_location}
+                  </span>
+                </div>
+              )}
             </div>
 
             {statusMessage && (
@@ -249,32 +282,38 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
               </div>
             )}
 
-            {/* Actions */}
+            {/* Actions (Sign Out ONLY when permanently rejected) */}
             <div className="flex flex-col gap-2.5 sm:flex-row">
-              <button
-                type="button"
-                disabled={checking}
-                onClick={handleCheckStatus}
-                className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-chmsu-forest px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-green disabled:opacity-60"
-              >
-                {checking ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Checking status...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4" />
-                    Check Status
-                  </>
-                )}
-              </button>
+              {!isRejected && (
+                <button
+                  type="button"
+                  disabled={checking}
+                  onClick={handleCheckStatus}
+                  className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-chmsu-forest px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-green disabled:opacity-60"
+                >
+                  {checking ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Checking status...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4" />
+                      Check Status
+                    </>
+                  )}
+                </button>
+              )}
 
               <button
                 type="button"
                 disabled={signingOut}
                 onClick={handleSignOut}
-                className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-chmsu-border bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-60 ${
+                  isRejected
+                    ? "w-full border-red-300 bg-red-600 text-white hover:bg-red-700"
+                    : "border-chmsu-border bg-white text-slate-700 hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                }`}
               >
                 {signingOut ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -285,11 +324,13 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
               </button>
             </div>
 
-            <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-slate-500">
-              <CheckCircle2 className="h-3.5 w-3.5 text-chmsu-green" />
-              Once approved, clicking Check Status will open your portal
-              immediately.
-            </p>
+            {!isRejected && (
+              <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-slate-500">
+                <CheckCircle2 className="h-3.5 w-3.5 text-chmsu-green" />
+                Once approved, clicking Check Status will open your portal
+                immediately.
+              </p>
+            )}
           </div>
         </div>
       </main>

@@ -147,6 +147,12 @@ export async function updateSession(request) {
     return redirectWithCookies(homeUrl, supabaseResponse);
   }
 
+  const needsCompletion = Boolean(
+    profile &&
+      (profile.profile_completed === false ||
+        profile.approval_status === "returned")
+  );
+
   // Self-registration routes: /register, /register/[campus], and /register/complete
   if (segments[0] === "register") {
     const isCompleteStep = segments[1] === "complete";
@@ -159,7 +165,7 @@ export async function updateSession(request) {
         return redirectWithCookies(regUrl, supabaseResponse);
       }
 
-      if (profile && profile.profile_completed === false) {
+      if (needsCompletion) {
         return supabaseResponse;
       }
 
@@ -178,7 +184,7 @@ export async function updateSession(request) {
 
     if (user && profile) {
       const redirectUrl = request.nextUrl.clone();
-      if (profile.profile_completed === false) {
+      if (needsCompletion) {
         redirectUrl.pathname = "/register/complete";
         redirectUrl.search =
           segments[1] && CAMPUS_SLUGS.includes(segments[1])
@@ -210,7 +216,7 @@ export async function updateSession(request) {
       return redirectWithCookies(homeUrl, supabaseResponse);
     }
 
-    if (profile && profile.profile_completed === false) {
+    if (needsCompletion) {
       const completeUrl = request.nextUrl.clone();
       completeUrl.pathname = "/register/complete";
       completeUrl.search = "";
@@ -244,7 +250,7 @@ export async function updateSession(request) {
       return redirectWithCookies(loginUrl, supabaseResponse);
     }
 
-    if (profile.profile_completed === false) {
+    if (needsCompletion) {
       const completeUrl = request.nextUrl.clone();
       completeUrl.pathname = "/register/complete";
       completeUrl.search = "";
@@ -288,7 +294,7 @@ export async function updateSession(request) {
       return redirectWithCookies(loginUrl, supabaseResponse);
     }
 
-    if (profile.profile_completed === false) {
+    if (needsCompletion) {
       const completeUrl = request.nextUrl.clone();
       completeUrl.pathname = "/register/complete";
       completeUrl.search = "";
@@ -348,7 +354,7 @@ export async function updateSession(request) {
     return redirectWithCookies(loginUrl, supabaseResponse);
   }
 
-  if (profile.profile_completed === false) {
+  if (needsCompletion) {
     const completeUrl = request.nextUrl.clone();
     completeUrl.pathname = "/register/complete";
     completeUrl.search = "";
@@ -364,6 +370,14 @@ export async function updateSession(request) {
 
   const userCampusSlug = profile.campuses?.slug ?? campusSlug;
   const hasCrossCampusAccess = CROSS_CAMPUS_ROLES.includes(profile.role);
+
+  // Strict separation of duties: /[campus]/admin is strictly for matching campus_admin ONLY
+  if (section === "admin" && profile.role === ROLES.SUPERADMIN) {
+    const superUrl = request.nextUrl.clone();
+    superUrl.pathname = "/superadmin";
+    superUrl.search = "";
+    return redirectWithCookies(superUrl, supabaseResponse);
+  }
 
   // Enforce strict campus isolation for campus-bound roles (including campus_admin)
   if (!hasCrossCampusAccess && userCampusSlug !== campusSlug) {

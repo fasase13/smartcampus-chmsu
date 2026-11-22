@@ -112,9 +112,9 @@ export default function RegistrationForm({ preselectedSlug = "" }) {
     try {
       const supabase = createClient();
 
-      // 1. Enforce 1 account per canonical email
-      const { data: isAvailable, error: availError } = await supabase.rpc(
-        "check_registration_email_available",
+      // 1. Enforce 1 account per canonical email & block permanently banned emails
+      const { data: emailStatus, error: availError } = await supabase.rpc(
+        "check_registration_email_status",
         { p_email: cleanEmail }
       );
 
@@ -125,7 +125,14 @@ export default function RegistrationForm({ preselectedSlug = "" }) {
         return;
       }
 
-      if (!isAvailable) {
+      if (emailStatus?.banned) {
+        setErrorMessage(
+          "This email address has been banned from registering on SmartCampus CHMSU."
+        );
+        return;
+      }
+
+      if (!emailStatus?.available) {
         setErrorMessage(
           "An account with this email address already exists. Please sign in using your 8-digit CHMSU ID Number."
         );
