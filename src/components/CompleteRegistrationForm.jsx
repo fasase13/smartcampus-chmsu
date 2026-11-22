@@ -69,6 +69,7 @@ export default function CompleteRegistrationForm({
   verifiedEmail,
   preselectedSlug = "",
   profile = null,
+  initialFullName = "",
   existingFrontUrl = "",
   existingBackUrl = "",
 }) {
@@ -96,8 +97,20 @@ export default function CompleteRegistrationForm({
       ? profile?.employee_or_student_id ?? ""
       : ""
   );
+  const emailLocalPart = String(verifiedEmail || "").split("@")[0] ?? "";
+  const profileRealName =
+    profile?.full_name &&
+    profile.full_name !== "Pending User" &&
+    profile.full_name !== emailLocalPart
+      ? profile.full_name
+      : "";
+
   const [fullName, setFullName] = useState(
-    isReturned && !isFlagged("full_name") ? profile?.full_name ?? "" : ""
+    isReturned
+      ? isFlagged("full_name")
+        ? ""
+        : profile?.full_name ?? ""
+      : initialFullName || profileRealName || ""
   );
   const [requestedRole, setRequestedRole] = useState(
     isReturned

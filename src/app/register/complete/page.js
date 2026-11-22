@@ -62,6 +62,10 @@ export default async function CompleteRegistrationPage({ searchParams }) {
     existingBackUrl = backRes.data?.signedUrl ?? "";
   }
 
+  const oauthFullName = String(
+    user.user_metadata?.full_name || user.user_metadata?.name || ""
+  ).trim();
+
   return (
     <CompleteRegistrationForm
       campuses={campuses ?? []}
@@ -69,6 +73,7 @@ export default async function CompleteRegistrationPage({ searchParams }) {
       verifiedEmail={user.email ?? profile?.email ?? ""}
       preselectedSlug={preselectedSlug}
       profile={profile}
+      initialFullName={oauthFullName}
       existingFrontUrl={existingFrontUrl}
       existingBackUrl={existingBackUrl}
     />
