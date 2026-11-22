@@ -139,12 +139,11 @@ export default function RmoPortalClient({
       .select(
         "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
       )
-      .or(`origin_campus_id.eq.${campus.id},current_campus_id.eq.${campus.id}`)
       .order("created_at", { ascending: false })
       .limit(150);
 
     if (data) setDocuments(data);
-  }, [campus.id]);
+  }, []);
 
   const loadDocumentRoutes = useCallback(async (docId) => {
     setLoadingRoutes(true);

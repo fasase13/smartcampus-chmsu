@@ -34,9 +34,6 @@ const QrScanner = dynamic(
   { ssr: false }
 );
 
-const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function formatDateTime(isoString) {
   if (!isoString) return "—";
   return new Intl.DateTimeFormat("en-PH", {
@@ -139,19 +136,20 @@ export default function OfficeScannerClient({
 
   const refreshQueue = useCallback(async () => {
     const supabase = createClient();
+    // Strict RLS (public.can_access_document) enforces role-based scoping:
+    // - superadmin: all documents
+    // - campus_admin: all documents touching campus_id (origin, current, or route history)
+    // - regular non-student roles: strictly documents sent to or sent by currentUser
     const { data } = await supabase
       .from("documents")
       .select(
         "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
       )
-      .or(
-        `current_campus_id.eq.${campus.id},current_holder_id.eq.${profile.id}`
-      )
       .order("updated_at", { ascending: false })
       .limit(120);
 
     if (data) setQueueDocs(data);
-  }, [campus.id, profile.id]);
+  }, []);
 
   const loadRoutes = useCallback(async (docId) => {
     setLoadingRoutes(true);
@@ -213,54 +211,58 @@ export default function OfficeScannerClient({
       setLookingUp(true);
       setFeedback(null);
 
+      const unauthorizedAlert =
+        profile.role === "campus_admin"
+          ? "Invalid Document — This document is outside your campus scope."
+          : "Invalid Document — You can only scan documents that were sent to you or sent by you.";
+
       try {
-        const supabase = createClient();
-        let query = supabase
-          .from("documents")
-          .select(
-            "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
-          );
+        const response = await fetch("/api/documents/lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: cleaned }),
+        });
 
-        if (UUID_REGEX.test(cleaned)) {
-          query = query.eq("qr_token", cleaned);
-        } else {
-          query = query.ilike("tracking_code", cleaned);
-        }
+        const payload = await response.json().catch(() => null);
 
-        const { data, error } = await query.maybeSingle();
-
-        if (error || !data) {
+        if (!response.ok || !payload?.ok || !payload?.document) {
           setActiveDoc(null);
           setActiveRoutes([]);
           setFeedback({
             type: "error",
-            message:
-              "Document not found or not accessible to your campus/role. Verify the QR slip or tracking code.",
+            message: unauthorizedAlert,
           });
           return;
         }
 
-        setActiveDoc(data);
+        setActiveDoc(payload.document);
+        setActiveRoutes(Array.isArray(payload.routes) ? payload.routes : []);
         setWasScannedViaQr(scannedViaQr);
         setRemarks("");
         setShowForwardForm(false);
         setForwardCampusId(campus.id);
         setForwardOffice("");
         setForwardHolderId("");
-        await loadRoutes(data.id);
 
         if (scannedViaQr) {
           setCameraActive(false);
           setFeedback({
             type: "success",
-            message: `QR verified: ${data.tracking_code} — ready for custody action.`,
+            message: `QR verified: ${payload.document.tracking_code} — ready for custody action.`,
           });
         }
+      } catch {
+        setActiveDoc(null);
+        setActiveRoutes([]);
+        setFeedback({
+          type: "error",
+          message: unauthorizedAlert,
+        });
       } finally {
         setLookingUp(false);
       }
     },
-    [campus.id, loadRoutes, setCameraActive]
+    [campus.id, profile.role, setCameraActive]
   );
 
   function handleQrScan(detectedCodes) {
@@ -287,7 +289,7 @@ export default function OfficeScannerClient({
         : err?.name === "NotFoundError"
           ? "No webcam or camera device was detected on this machine. Use the Manual Tracking Code input."
           : err?.message ||
-            "Unable to start camera on this device. Use the Manual Tracking Code input below.";
+          "Unable to start camera on this device. Use the Manual Tracking Code input below.";
     setCameraError(msg);
     setCameraActive(false);
   }
@@ -539,9 +541,9 @@ export default function OfficeScannerClient({
 
   const activeStatusMeta = activeDoc
     ? DOCUMENT_STATUS_META[activeDoc.status] ?? {
-        label: activeDoc.status,
-        badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
-      }
+      label: activeDoc.status,
+      badgeClass: "bg-slate-100 text-slate-700 border-slate-200",
+    }
     : null;
   const activeSla = activeDoc ? getSlaSummary(activeDoc) : null;
 
@@ -565,11 +567,10 @@ export default function OfficeScannerClient({
       {feedback && (
         <div
           role="status"
-          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-            feedback.type === "error"
+          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${feedback.type === "error"
               ? "border-red-200 bg-red-50 text-red-800"
               : "border-emerald-200 bg-emerald-50 text-emerald-900"
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2.5">
             {feedback.type === "error" ? (
@@ -605,11 +606,10 @@ export default function OfficeScannerClient({
                 setCameraError("");
                 setCameraActive((prev) => !prev);
               }}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
-                cameraActive
+              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition ${cameraActive
                   ? "bg-red-600 text-white hover:bg-red-700"
                   : "bg-chmsu-forest text-white hover:bg-chmsu-green"
-              }`}
+                }`}
             >
               {cameraActive ? (
                 <>
@@ -775,9 +775,8 @@ export default function OfficeScannerClient({
                     SLA Deadline
                   </p>
                   <p
-                    className={`mt-0.5 font-bold tabular-nums ${
-                      activeSla?.overdue ? "text-red-700" : "text-slate-900"
-                    }`}
+                    className={`mt-0.5 font-bold tabular-nums ${activeSla?.overdue ? "text-red-700" : "text-slate-900"
+                      }`}
                   >
                     {formatDateTime(activeDoc.due_at)}
                   </p>
@@ -1004,22 +1003,20 @@ export default function OfficeScannerClient({
             <button
               type="button"
               onClick={() => setQueueTab("incoming")}
-              className={`rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
-                queueTab === "incoming"
+              className={`rounded-xl px-3.5 py-2 text-xs font-semibold transition ${queueTab === "incoming"
                   ? "bg-chmsu-forest text-white"
                   : "border border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-green"
-              }`}
+                }`}
             >
               Incoming / In Transit ({incomingQueue.length})
             </button>
             <button
               type="button"
               onClick={() => setQueueTab("active")}
-              className={`rounded-xl px-3.5 py-2 text-xs font-semibold transition ${
-                queueTab === "active"
+              className={`rounded-xl px-3.5 py-2 text-xs font-semibold transition ${queueTab === "active"
                   ? "bg-chmsu-forest text-white"
                   : "border border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-green"
-              }`}
+                }`}
             >
               Active in Office ({activeOfficeQueue.length})
             </button>
@@ -1050,9 +1047,8 @@ export default function OfficeScannerClient({
               return (
                 <div
                   key={doc.id}
-                  className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 transition hover:bg-slate-50 ${
-                    isSelected ? "bg-emerald-50/50" : ""
-                  }`}
+                  className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 transition hover:bg-slate-50 ${isSelected ? "bg-emerald-50/50" : ""
+                    }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

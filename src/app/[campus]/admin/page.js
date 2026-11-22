@@ -75,7 +75,6 @@ export default async function CampusAdminPage({ params }) {
       .select(
         "id, tracking_code, origin_campus_id, current_campus_id, title, document_type, priority, status, current_office, sla_hours, due_at, is_delayed, created_at, updated_at"
       )
-      .or(`origin_campus_id.eq.${campus.id},current_campus_id.eq.${campus.id}`)
       .order("created_at", { ascending: false })
       .limit(200),
   ]);

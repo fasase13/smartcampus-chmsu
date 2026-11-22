@@ -72,7 +72,6 @@ export default async function OfficeScannerPage({ params }) {
       .select(
         "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
       )
-      .or(`current_campus_id.eq.${campus.id},current_holder_id.eq.${user.id}`)
       .order("updated_at", { ascending: false })
       .limit(120),
   ]);
