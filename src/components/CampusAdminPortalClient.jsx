@@ -423,14 +423,19 @@ export default function CampusAdminPortalClient({
         onSignOut={handleSignOut}
         signingOut={signingOut}
         collapsed={collapsed}
+        onToggleCollapse={toggleSidebar}
         mobileOpen={mobileOpen}
         onCloseMobile={closeMobile}
         ariaLabel="Campus Admin Navigation"
       />
 
       {/* Main Content */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
+      <div
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 ${
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
+        <header className="sticky top-0 z-20 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <SidebarToggleButton onClick={toggleSidebar} />
@@ -1121,6 +1126,17 @@ export default function CampusAdminPortalClient({
                     </span>
                     <span className="text-right text-xs font-medium text-slate-800">
                       {selectedUser.office_location || "—"}
+                    </span>
+                  </div>
+                )}
+
+                {selectedUser.role !== ROLES.STUDENT && (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      Job Title
+                    </span>
+                    <span className="text-right text-xs font-medium text-slate-800">
+                      {selectedUser.job_title || "—"}
                     </span>
                   </div>
                 )}

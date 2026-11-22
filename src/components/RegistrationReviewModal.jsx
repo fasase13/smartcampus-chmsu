@@ -20,6 +20,7 @@ export const RETURNABLE_FIELD_OPTIONS = [
   { key: "full_name", label: "Full Name" },
   { key: "department", label: "College / Department" },
   { key: "program_or_office", label: "Program / Office" },
+  { key: "job_title", label: "Job Title", nonStudentOnly: true },
   { key: "id_photos", label: "School ID Photos" },
 ];
 
@@ -259,6 +260,14 @@ export default function RegistrationReviewModal({
                       : user.office_location || "—"}
                   </dd>
                 </div>
+                {!isStudent && (
+                  <div>
+                    <dt className="font-semibold text-slate-500">Job Title</dt>
+                    <dd className="mt-0.5 font-semibold text-slate-900">
+                      {user.job_title || "—"}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt className="font-semibold text-slate-500">
                     Submitted Date &amp; Time
@@ -346,7 +355,9 @@ export default function RegistrationReviewModal({
                     blocked from re-submitting the same invalid value.
                   </p>
                   <div className="mt-2.5 flex flex-wrap gap-2">
-                    {RETURNABLE_FIELD_OPTIONS.map((opt) => {
+                    {RETURNABLE_FIELD_OPTIONS.filter(
+                      (opt) => !(opt.nonStudentOnly && isStudent)
+                    ).map((opt) => {
                       const checked = flaggedFields.includes(opt.key);
                       return (
                         <label

@@ -62,17 +62,28 @@ export function usePortalSidebarState() {
   return { collapsed, mobileOpen, toggleSidebar, closeMobile };
 }
 
-export function SidebarToggleButton({ onClick, label = "Toggle navigation sidebar" }) {
+export function SidebarToggleButton({ onClick, label = "Toggle navigation menu" }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-chmsu-border bg-white text-[#143D29] transition hover:border-[#143D29]/30 hover:bg-chmsu-canvas"
-    >
-      <Menu className="h-5 w-5" />
-    </button>
+    <div className="flex shrink-0 items-center gap-2.5">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        title={label}
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-chmsu-border bg-white text-[#143D29] transition hover:border-[#143D29]/30 hover:bg-chmsu-canvas lg:hidden"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-chmsu-border bg-white p-0.5 shadow-2xs sm:h-10 sm:w-10">
+        <Image
+          src="/images/chmsu-logo.jpg"
+          alt="CHMSU Seal"
+          width={38}
+          height={38}
+          className="h-full w-full rounded-full object-contain"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -96,6 +107,7 @@ export default function PortalSidebar({
   onSignOut,
   signingOut = false,
   collapsed = false,
+  onToggleCollapse,
   mobileOpen = false,
   onCloseMobile,
   ariaLabel = "Portal Navigation",
@@ -191,50 +203,57 @@ export default function PortalSidebar({
   function renderSidebarContent(isCompact, showMobileClose = false) {
     return (
       <>
-        {/* Brand Header */}
+        {/* Sidebar Header with 3-Line Collapse Toggle */}
         <div
           className={`flex shrink-0 items-center border-b border-white/10 py-4 ${
-            isCompact ? "justify-center px-2" : "justify-between gap-3 px-5"
+            isCompact ? "justify-center px-2" : "justify-between gap-2 px-4"
           }`}
         >
-          <div
-            className={`flex min-w-0 items-center ${
-              isCompact ? "justify-center" : "gap-3"
-            }`}
-          >
-            <div
-              title={isCompact ? `${title} — ${subtitle}` : undefined}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5"
-            >
-              <Image
-                src="/images/chmsu-logo.jpg"
-                alt="CHMSU Seal"
-                width={38}
-                height={38}
-                className="h-full w-full rounded-full object-contain"
-              />
-            </div>
-            {!isCompact && (
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold tracking-tight text-white">
-                  {title}
-                </p>
-                <p className="truncate text-[11px] font-semibold text-[#FACC15]">
-                  {subtitle}
-                </p>
-              </div>
-            )}
-          </div>
-
-          {showMobileClose && (
+          {isCompact ? (
             <button
               type="button"
-              onClick={onCloseMobile}
-              aria-label="Close navigation menu"
-              className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white"
+              onClick={onToggleCollapse}
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+              className="inline-flex items-center justify-center rounded-lg p-2 text-white transition hover:bg-white/10"
             >
-              <X className="h-5 w-5" />
+              <Menu className="h-5 w-5" />
             </button>
+          ) : (
+            <>
+              <div className="flex min-w-0 items-center gap-2.5">
+                {!showMobileClose && (
+                  <button
+                    type="button"
+                    onClick={onToggleCollapse}
+                    aria-label="Collapse sidebar"
+                    title="Collapse sidebar"
+                    className="inline-flex shrink-0 items-center justify-center rounded-lg p-2 text-white transition hover:bg-white/10"
+                  >
+                    <Menu className="h-5 w-5" />
+                  </button>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold tracking-tight text-white">
+                    {title}
+                  </p>
+                  <p className="truncate text-[11px] font-semibold text-[#FACC15]">
+                    {subtitle}
+                  </p>
+                </div>
+              </div>
+
+              {showMobileClose && (
+                <button
+                  type="button"
+                  onClick={onCloseMobile}
+                  aria-label="Close navigation menu"
+                  className="rounded-lg p-1.5 text-white/80 hover:bg-white/10 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -248,7 +267,7 @@ export default function PortalSidebar({
 
         {/* Bottom Profile Card + Sign Out */}
         <div
-          className={`shrink-0 border-t border-white/10 ${
+          className={`mt-auto shrink-0 border-t border-white/10 ${
             isCompact ? "p-3" : "p-4"
           }`}
         >
@@ -294,9 +313,9 @@ export default function PortalSidebar({
 
   return (
     <>
-      {/* Desktop Collapsible Sidebar (lg+) */}
+      {/* Desktop Fixed Full-Viewport Collapsible Sidebar (lg+) */}
       <aside
-        className={`no-print hidden shrink-0 flex-col border-r border-white/10 bg-[#143D29] text-white transition-all duration-200 lg:sticky lg:top-0 lg:flex lg:h-dvh ${
+        className={`no-print hidden h-screen shrink-0 flex-col border-r border-white/10 bg-[#143D29] text-white transition-all duration-200 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex ${
           collapsed ? "w-20" : "w-64"
         }`}
       >
@@ -305,7 +324,7 @@ export default function PortalSidebar({
 
       {/* Mobile Slide-Over Drawer (< lg) */}
       <div
-        className={`no-print fixed inset-0 z-50 lg:hidden ${
+        className={`no-print fixed inset-0 z-40 lg:hidden ${
           mobileOpen ? "pointer-events-auto" : "pointer-events-none"
         }`}
         aria-hidden={!mobileOpen}
@@ -319,7 +338,7 @@ export default function PortalSidebar({
         />
         {/* Drawer Panel */}
         <aside
-          className={`fixed inset-y-0 left-0 flex w-64 max-w-[85vw] flex-col border-r border-white/10 bg-[#143D29] text-white shadow-xl transition-transform duration-200 ${
+          className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 max-w-[85vw] flex-col border-r border-white/10 bg-[#143D29] text-white shadow-xl transition-transform duration-200 ${
             mobileOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >

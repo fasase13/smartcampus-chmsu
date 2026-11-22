@@ -900,7 +900,7 @@ export default function RmoPortalClient({
                   <th className="px-4 py-3">Routing</th>
                   <th className="px-4 py-3">Status &amp; Priority</th>
                   <th className="px-4 py-3">SLA Deadline</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3 text-left">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-chmsu-border">
@@ -990,12 +990,12 @@ export default function RmoPortalClient({
                         </span>
                       </td>
 
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
+                      <td className="px-5 py-3.5 text-left">
+                        <div className="inline-flex items-center justify-start gap-1.5">
                           <button
                             type="button"
                             onClick={() => setQrSlipDoc(doc)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-chmsu-border bg-white px-2.5 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green hover:bg-chmsu-green/10"
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-2.5 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green hover:bg-chmsu-green/10"
                           >
                             <QrCode className="h-3.5 w-3.5 text-chmsu-green" />
                             QR Slip
@@ -1003,7 +1003,7 @@ export default function RmoPortalClient({
                           <button
                             type="button"
                             onClick={() => openInspectDrawer(doc)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-chmsu-border bg-white px-2.5 py-1.5 text-xs font-semibold text-chmsu-navy hover:border-chmsu-navy"
+                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-2.5 py-1.5 text-xs font-semibold text-chmsu-navy hover:border-chmsu-navy"
                           >
                             <FileText className="h-3.5 w-3.5" />
                             Trail

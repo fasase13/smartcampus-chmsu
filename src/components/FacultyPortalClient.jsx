@@ -853,7 +853,7 @@ export default function FacultyPortalClient({
                   <th className="px-4 py-3">Scope</th>
                   <th className="px-4 py-3">Category / Priority</th>
                   <th className="px-4 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3 text-left">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-chmsu-border">
@@ -931,8 +931,8 @@ export default function FacultyPortalClient({
                         </div>
                       </td>
 
-                      <td className="px-5 py-3.5 text-right">
-                        <div className="inline-flex items-center justify-end gap-1">
+                      <td className="px-5 py-3.5 text-left">
+                        <div className="inline-flex items-center justify-start gap-1">
                           {editable && (
                             <>
                               <button

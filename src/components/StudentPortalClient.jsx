@@ -1,25 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
-  AlertTriangle,
-  Bell,
   Building2,
   Calendar,
-  Check,
-  CheckCheck,
   Clock,
-  FileSearch,
   Globe,
-  Loader2,
   LogOut,
   MapPin,
   Newspaper,
   Pin,
   Search,
-  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
@@ -31,8 +23,6 @@ import PortalSidebar, {
 } from "@/components/PortalSidebar";
 import {
   ANNOUNCEMENT_CATEGORIES,
-  DOCUMENT_STATUS_META,
-  ROUTE_ACTION_LABELS,
   getAvailabilityMeta,
 } from "@/lib/constants";
 
@@ -55,12 +45,14 @@ function formatDateTime(isoString) {
 export default function StudentPortalClient({
   profile,
   campus,
+  initialTab = "news",
   initialAnnouncements,
   initialFaculty,
-  initialNotifications,
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("news");
+  const [activeTab, setActiveTab] = useState(
+    initialTab === "instructors" ? "instructors" : "news"
+  );
   const [signingOut, setSigningOut] = useState(false);
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
     usePortalSidebarState();
@@ -68,7 +60,6 @@ export default function StudentPortalClient({
   // Live data states
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
   const [faculty, setFaculty] = useState(initialFaculty);
-  const [notifications, setNotifications] = useState(initialNotifications);
 
   // News filters
   const [newsQuery, setNewsQuery] = useState("");
@@ -78,21 +69,6 @@ export default function StudentPortalClient({
   const [facultyQuery, setFacultyQuery] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-
-  // Document Tracker state
-  const [trackingInput, setTrackingInput] = useState("");
-  const [trackingLoading, setTrackingLoading] = useState(false);
-  const [trackingError, setTrackingError] = useState("");
-  const [trackedDoc, setTrackedDoc] = useState(null);
-  const [hasSearchedDoc, setHasSearchedDoc] = useState(false);
-
-  // Notification actions
-  const [markingAll, setMarkingAll] = useState(false);
-
-  const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.is_read).length,
-    [notifications]
-  );
 
   // Refetch helpers for Realtime
   const refreshAnnouncements = useCallback(async () => {
@@ -132,18 +108,6 @@ export default function StudentPortalClient({
     if (data) setFaculty(data);
   }, [campus.id]);
 
-  const refreshNotifications = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("notifications")
-      .select("id, type, title, message, is_read, read_at, created_at")
-      .eq("user_id", profile.id)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (data) setNotifications(data);
-  }, [profile.id]);
-
   // Supabase Realtime subscriptions
   useEffect(() => {
     const supabase = createClient();
@@ -164,16 +128,6 @@ export default function StudentPortalClient({
         },
         () => refreshFaculty()
       )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${profile.id}`,
-        },
-        () => refreshNotifications()
-      )
       .subscribe();
 
     return () => {
@@ -185,7 +139,6 @@ export default function StudentPortalClient({
     profile.id,
     refreshAnnouncements,
     refreshFaculty,
-    refreshNotifications,
   ]);
 
   // Derived data: Filtered News
@@ -228,75 +181,6 @@ export default function StudentPortalClient({
     });
   }, [faculty, facultyQuery, departmentFilter, statusFilter]);
 
-  // Document ID Lookup via SECURITY DEFINER RPC
-  async function handleDocumentLookup(e) {
-    e.preventDefault();
-    const code = trackingInput.trim();
-    if (!code) return;
-
-    setTrackingLoading(true);
-    setTrackingError("");
-    setHasSearchedDoc(true);
-
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase.rpc(
-        "lookup_document_by_tracking_code",
-        { p_tracking_code: code }
-      );
-
-      if (error) {
-        setTrackedDoc(null);
-        setTrackingError(
-          "Unable to verify tracking code right now. Please try again."
-        );
-        return;
-      }
-
-      setTrackedDoc(data ?? null);
-    } finally {
-      setTrackingLoading(false);
-    }
-  }
-
-  // Notification handlers
-  async function markNotificationRead(id) {
-    const nowIso = new Date().toISOString();
-    setNotifications((prev) =>
-      prev.map((n) =>
-        n.id === id ? { ...n, is_read: true, read_at: nowIso } : n
-      )
-    );
-    const supabase = createClient();
-    await supabase
-      .from("notifications")
-      .update({ is_read: true, read_at: nowIso })
-      .eq("id", id)
-      .eq("user_id", profile.id);
-  }
-
-  async function markAllRead() {
-    if (unreadCount === 0) return;
-    setMarkingAll(true);
-    const nowIso = new Date().toISOString();
-    try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true, read_at: nowIso })
-        .eq("user_id", profile.id)
-        .eq("is_read", false);
-
-      if (!error) {
-        setNotifications((prev) =>
-          prev.map((n) => ({ ...n, is_read: true, read_at: n.read_at ?? nowIso }))
-        );
-      }
-    } finally {
-      setMarkingAll(false);
-    }
-  }
-
   async function handleSignOut() {
     setSigningOut(true);
     try {
@@ -310,40 +194,24 @@ export default function StudentPortalClient({
   }
 
   const tabs = [
-    { id: "news", label: "News", desktopLabel: "Campus News", icon: Newspaper },
+    {
+      id: "news",
+      label: "Announcements",
+      desktopLabel: "Announcements",
+      icon: Newspaper,
+    },
     {
       id: "instructors",
-      label: "Instructors",
+      label: "Instructor Locator",
       desktopLabel: "Instructor Locator",
       icon: Users,
     },
-    {
-      id: "track",
-      label: "Track Doc",
-      desktopLabel: "Track Document",
-      icon: FileSearch,
-    },
-    {
-      id: "alerts",
-      label: "Alerts",
-      desktopLabel: "Notifications",
-      icon: Bell,
-      badge: unreadCount,
-    },
   ];
-
-  const trackedStatusMeta = trackedDoc
-    ? DOCUMENT_STATUS_META[trackedDoc.status] ?? {
-        label: trackedDoc.status,
-        badgeClass: "bg-slate-100 text-slate-800 border-slate-200",
-      }
-    : null;
 
   const sidebarNavItems = tabs.map((tab) => ({
     id: tab.id,
     label: tab.desktopLabel,
     icon: tab.icon,
-    alertBadge: tab.badge,
   }));
 
   return (
@@ -362,25 +230,23 @@ export default function StudentPortalClient({
         onSignOut={handleSignOut}
         signingOut={signingOut}
         collapsed={collapsed}
+        onToggleCollapse={toggleSidebar}
         mobileOpen={mobileOpen}
         onCloseMobile={closeMobile}
         ariaLabel="Student Navigation"
       />
 
       {/* Main Column */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 ${
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
         {/* Sticky Header */}
-        <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
+        <header className="sticky top-0 z-20 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <SidebarToggleButton onClick={toggleSidebar} />
-              <Image
-                src="/images/chmsu-logo.jpg"
-                alt="CHMSU Seal"
-                width={36}
-                height={36}
-                className="h-9 w-9 shrink-0 rounded-full object-contain lg:hidden"
-              />
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-chmsu-forest sm:text-base">
                   {profile.full_name}
@@ -672,359 +538,15 @@ export default function StudentPortalClient({
               )}
             </section>
           )}
-
-          {/* ============================================================== */}
-          {/* TAB 3: PRIVATE DOCUMENT ID TRACKER                             */}
-          {/* ============================================================== */}
-          {activeTab === "track" && (
-            <section className="space-y-5">
-              <div>
-                <h1 className="text-xl font-bold text-chmsu-forest sm:text-2xl">
-                  Private Document ID Tracker
-                </h1>
-                <p className="mt-0.5 text-sm text-slate-600">
-                  Enter your official CHMSU Document Tracking Code to check live
-                  processing progress.
-                </p>
-              </div>
-
-              {/* Lookup Form */}
-              <form
-                onSubmit={handleDocumentLookup}
-                className="rounded-2xl border border-chmsu-border bg-white p-4 sm:p-5"
-              >
-                <label
-                  htmlFor="tracking_code"
-                  className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                >
-                  Document Tracking Code
-                </label>
-                <div className="mt-2 flex flex-col gap-2.5 sm:flex-row">
-                  <div className="relative flex-1">
-                    <FileSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input
-                      id="tracking_code"
-                      type="text"
-                      required
-                      value={trackingInput}
-                      onChange={(e) => setTrackingInput(e.target.value)}
-                      placeholder="e.g., CHMSU-TAL-2026-0001"
-                      className="w-full rounded-xl border border-chmsu-border bg-chmsu-canvas py-2.5 pl-10 pr-3.5 font-mono text-sm uppercase text-slate-900 outline-none focus:border-chmsu-green focus:bg-white focus:ring-2 focus:ring-chmsu-green/20"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={trackingLoading}
-                    className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-chmsu-forest px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-green disabled:opacity-60"
-                  >
-                    {trackingLoading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Tracking...
-                      </>
-                    ) : (
-                      "Track Document"
-                    )}
-                  </button>
-                </div>
-
-                <p className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-500">
-                  <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-chmsu-green" />
-                  RA 10173 Protected: Exact tracking code required. Internal
-                  staff remarks and confidential records are never exposed.
-                </p>
-              </form>
-
-              {trackingError && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-                  {trackingError}
-                </div>
-              )}
-
-              {/* Empty / Not Found State */}
-              {hasSearchedDoc && !trackingLoading && !trackingError && !trackedDoc && (
-                <div className="rounded-2xl border border-dashed border-chmsu-border bg-white p-8 text-center">
-                  <FileSearch className="mx-auto h-9 w-9 text-slate-400" />
-                  <h2 className="mt-2.5 text-base font-bold text-slate-800">
-                    No Trackable Document Found
-                  </h2>
-                  <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-                    We couldn&apos;t find a public-trackable record matching{" "}
-                    <span className="font-mono font-semibold text-slate-700">
-                      {trackingInput.trim().toUpperCase()}
-                    </span>
-                    . Double-check the tracking code on your RMO slip or contact
-                    your campus Records Management Office.
-                  </p>
-                </div>
-              )}
-
-              {/* Tracked Document Result */}
-              {trackedDoc && (
-                <div className="space-y-4">
-                  {/* Delayed Alert Banner */}
-                  {trackedDoc.is_delayed && (
-                    <div
-                      role="alert"
-                      className="flex items-start gap-3 rounded-2xl border border-red-300 bg-red-50 p-4 text-red-900"
-                    >
-                      <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-                      <div>
-                        <p className="text-sm font-bold">
-                          Processing Delay Alert
-                        </p>
-                        <p className="mt-0.5 text-xs text-red-800 sm:text-sm">
-                          This document has exceeded its target processing
-                          window and has been flagged for follow-up at{" "}
-                          <span className="font-semibold">
-                            {trackedDoc.current_office} ({trackedDoc.current_campus_name})
-                          </span>
-                          .
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Document Summary Card */}
-                  <div className="rounded-2xl border border-chmsu-border bg-white p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-mono text-xs font-bold tracking-wider text-chmsu-green">
-                          {trackedDoc.tracking_code}
-                        </p>
-                        <h2 className="mt-1 text-lg font-bold text-chmsu-forest">
-                          {trackedDoc.title}
-                        </h2>
-                        <p className="text-xs font-medium text-slate-500">
-                          Type: {trackedDoc.document_type}
-                        </p>
-                      </div>
-
-                      {trackedStatusMeta && (
-                        <span
-                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${trackedStatusMeta.badgeClass}`}
-                        >
-                          {trackedStatusMeta.label}
-                        </span>
-                      )}
-                    </div>
-
-                    <dl className="mt-5 grid grid-cols-1 gap-3 border-t border-chmsu-border pt-4 text-sm sm:grid-cols-2">
-                      <div className="rounded-xl bg-chmsu-canvas p-3">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Current Location
-                        </dt>
-                        <dd className="mt-1 font-semibold text-chmsu-navy">
-                          {trackedDoc.current_office}
-                        </dd>
-                        <dd className="text-xs text-slate-600">
-                          CHMSU {trackedDoc.current_campus_name}
-                        </dd>
-                      </div>
-
-                      <div className="rounded-xl bg-chmsu-canvas p-3">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Origin Campus
-                        </dt>
-                        <dd className="mt-1 font-semibold text-slate-900">
-                          CHMSU {trackedDoc.origin_campus_name}
-                        </dd>
-                        <dd className="text-xs text-slate-600 tabular-nums">
-                          Filed: {formatDateTime(trackedDoc.created_at)}
-                        </dd>
-                      </div>
-
-                      <div className="rounded-xl bg-chmsu-canvas p-3">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Target Completion / Due Date
-                        </dt>
-                        <dd className="mt-1 font-semibold text-slate-900 tabular-nums">
-                          {formatDateTime(trackedDoc.due_at)}
-                        </dd>
-                      </div>
-
-                      <div className="rounded-xl bg-chmsu-canvas p-3">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          {trackedDoc.completed_at
-                            ? "Completed At"
-                            : "Last Updated"}
-                        </dt>
-                        <dd className="mt-1 font-semibold text-slate-900 tabular-nums">
-                          {formatDateTime(
-                            trackedDoc.completed_at || trackedDoc.updated_at
-                          )}
-                        </dd>
-                      </div>
-                    </dl>
-                  </div>
-
-                  {/* Chronological Vertical Custody Timeline */}
-                  <div className="rounded-2xl border border-chmsu-border bg-white p-5">
-                    <h3 className="text-base font-bold text-chmsu-forest">
-                      Custody &amp; Routing Timeline
-                    </h3>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Chronological office handoffs from registration to release.
-                    </p>
-
-                    {!trackedDoc.timeline || trackedDoc.timeline.length === 0 ? (
-                      <p className="mt-4 text-sm text-slate-500">
-                        No routing steps recorded yet.
-                      </p>
-                    ) : (
-                      <ol className="mt-5 space-y-5 border-l-2 border-chmsu-green/30 pl-5">
-                        {trackedDoc.timeline.map((step, idx) => {
-                          const isLatest =
-                            idx === trackedDoc.timeline.length - 1;
-                          const isDelayStep = step.action === "delay_flagged";
-                          return (
-                            <li key={`${step.created_at}-${idx}`} className="relative">
-                              <span
-                                className={`absolute -left-[27px] top-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white ${
-                                  isDelayStep
-                                    ? "bg-red-600"
-                                    : isLatest
-                                      ? "bg-chmsu-green"
-                                      : "bg-chmsu-forest"
-                                }`}
-                              />
-                              <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-sm font-bold text-slate-900">
-                                  {ROUTE_ACTION_LABELS[step.action] ??
-                                    step.action}
-                                </p>
-                                <span className="text-xs font-medium text-slate-500 tabular-nums">
-                                  {formatDateTime(step.created_at)}
-                                </span>
-                              </div>
-                              <p className="mt-0.5 text-sm text-slate-700">
-                                {step.from_office ? (
-                                  <>
-                                    <span className="text-slate-500">
-                                      {step.from_office}
-                                    </span>{" "}
-                                    &rarr;{" "}
-                                    <span className="font-semibold text-chmsu-navy">
-                                      {step.to_office}
-                                    </span>
-                                  </>
-                                ) : (
-                                  <span className="font-semibold text-chmsu-navy">
-                                    {step.to_office}
-                                  </span>
-                                )}
-                              </p>
-                              <p className="mt-0.5 text-xs text-slate-500">
-                                CHMSU {step.campus_name}
-                              </p>
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    )}
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* ============================================================== */}
-          {/* TAB 4: NOTIFICATION CENTER                                     */}
-          {/* ============================================================== */}
-          {activeTab === "alerts" && (
-            <section className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h1 className="text-xl font-bold text-chmsu-forest sm:text-2xl">
-                    Notification Center
-                  </h1>
-                  <p className="mt-0.5 text-sm text-slate-600">
-                    Real-time alerts for your account and document updates.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={unreadCount === 0 || markingAll}
-                  onClick={markAllRead}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-xs font-semibold text-chmsu-forest transition hover:border-chmsu-green hover:bg-chmsu-green/10 disabled:opacity-50"
-                >
-                  <CheckCheck className="h-4 w-4 text-chmsu-green" />
-                  Mark All as Read
-                </button>
-              </div>
-
-              {notifications.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-chmsu-border bg-white p-8 text-center">
-                  <Bell className="mx-auto h-8 w-8 text-slate-400" />
-                  <p className="mt-2 text-sm font-semibold text-slate-700">
-                    You&apos;re all caught up
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    New document alerts and campus notifications will appear
-                    here automatically.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {notifications.map((notif) => (
-                    <article
-                      key={notif.id}
-                      className={`rounded-2xl border p-4 transition ${
-                        notif.is_read
-                          ? "border-chmsu-border bg-white"
-                          : notif.type === "delay_alert"
-                            ? "border-red-300 bg-red-50/70"
-                            : "border-chmsu-green/40 bg-emerald-50/40"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {!notif.is_read && (
-                              <span className="h-2 w-2 rounded-full bg-chmsu-flame" />
-                            )}
-                            <h2 className="text-sm font-bold text-slate-900">
-                              {notif.title}
-                            </h2>
-                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
-                              {notif.type.replace("_", " ")}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-sm text-slate-700">
-                            {notif.message}
-                          </p>
-                          <p className="mt-1.5 text-xs text-slate-500 tabular-nums">
-                            {formatDateTime(notif.created_at)}
-                          </p>
-                        </div>
-
-                        {!notif.is_read && (
-                          <button
-                            type="button"
-                            onClick={() => markNotificationRead(notif.id)}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-chmsu-border bg-white px-2.5 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green"
-                          >
-                            <Check className="h-3.5 w-3.5 text-chmsu-green" />
-                            Read
-                          </button>
-                        )}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
         </main>
       </div>
 
       {/* Mobile Bottom Navigation Bar */}
       <nav
         aria-label="Mobile Navigation"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-chmsu-border bg-white/95 backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-chmsu-border bg-white/95 backdrop-blur lg:hidden"
       >
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-2">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1042,14 +564,7 @@ export default function StudentPortalClient({
                 {isActive && (
                   <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-chmsu-green" />
                 )}
-                <span className="relative">
-                  <Icon className="h-5 w-5" />
-                  {tab.badge > 0 && (
-                    <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-chmsu-flame px-1 text-[10px] font-bold text-white tabular-nums">
-                      {tab.badge > 99 ? "99+" : tab.badge}
-                    </span>
-                  )}
-                </span>
+                <Icon className="h-5 w-5" />
                 <span className="truncate">{tab.label}</span>
               </button>
             );

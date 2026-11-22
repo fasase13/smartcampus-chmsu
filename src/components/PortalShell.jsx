@@ -127,14 +127,19 @@ export default function PortalShell({ profile, campus, children }) {
         onSignOut={handleSignOut}
         signingOut={signingOut}
         collapsed={collapsed}
+        onToggleCollapse={toggleSidebar}
         mobileOpen={mobileOpen}
         onCloseMobile={closeMobile}
       />
 
       {/* Main Column */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
         {/* Top Bar */}
-        <header className="no-print sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
+        <header className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <SidebarToggleButton onClick={toggleSidebar} />
             <div className="min-w-0">

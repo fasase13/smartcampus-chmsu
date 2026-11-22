@@ -945,15 +945,20 @@ export default function ManagementPortalClient({
         onSignOut={handleSignOut}
         signingOut={signingOut}
         collapsed={collapsed}
+        onToggleCollapse={toggleSidebar}
         mobileOpen={mobileOpen}
         onCloseMobile={closeMobile}
         ariaLabel="Management Navigation"
       />
 
       {/* Main Content Area */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
         {/* Top Action Bar (hidden on print) */}
-        <header className="no-print sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
+        <header className="no-print sticky top-0 z-20 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
               <SidebarToggleButton onClick={toggleSidebar} />
@@ -1577,7 +1582,7 @@ export default function ManagementPortalClient({
                           <th className="px-4 py-3">Campus</th>
                           <th className="px-4 py-3">Requested Role</th>
                           <th className="px-4 py-3">Submitted</th>
-                          <th className="px-5 py-3 text-right">Verification</th>
+                          <th className="px-5 py-3 text-left">Verification</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-chmsu-border">
@@ -1610,11 +1615,11 @@ export default function ManagementPortalClient({
                             <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">
                               {formatDateTime(u.created_at)}
                             </td>
-                            <td className="px-5 py-3.5 text-right">
+                            <td className="px-5 py-3.5 text-left">
                               <button
                                 type="button"
                                 onClick={() => openReviewModal(u)}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-green"
+                                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-chmsu-forest px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-green"
                               >
                                 <Eye className="h-3.5 w-3.5" />
                                 View ID Photos
@@ -1696,7 +1701,7 @@ export default function ManagementPortalClient({
                         <th className="px-4 py-3">Role</th>
                         <th className="px-4 py-3">Assigned Campus</th>
                         <th className="px-4 py-3">Status</th>
-                        <th className="px-5 py-3 text-right">Manage</th>
+                        <th className="px-5 py-3 text-left">Manage</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-chmsu-border">
@@ -1750,11 +1755,11 @@ export default function ManagementPortalClient({
                               )}
                             </div>
                           </td>
-                          <td className="px-5 py-3 text-right">
+                          <td className="px-5 py-3 text-left">
                             <button
                               type="button"
                               onClick={() => openEditUser(u)}
-                              className="rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green hover:bg-chmsu-green/10"
+                              className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green hover:bg-chmsu-green/10"
                             >
                               Edit Permissions
                             </button>

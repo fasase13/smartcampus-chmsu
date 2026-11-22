@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   AlertTriangle,
+  Briefcase,
   Building2,
   CheckCircle2,
   CreditCard,
@@ -41,6 +42,7 @@ const FIELD_LABELS = {
   full_name: "Full Name",
   department: "College / Department",
   program_or_office: "Program / Office",
+  job_title: "Job Title",
   id_photos: "School ID Photos",
 };
 
@@ -132,6 +134,9 @@ export default function CompleteRegistrationForm({
       ? profile?.office_location ?? ""
       : ""
   );
+  const [jobTitle, setJobTitle] = useState(
+    isReturned && !isFlagged("job_title") ? profile?.job_title ?? "" : ""
+  );
 
   // Existing valid photo paths retained if id_photos was NOT flagged
   const canReuseExistingPhotos =
@@ -211,6 +216,13 @@ export default function CompleteRegistrationForm({
           officeLocation.trim().toLowerCase() ===
             String(snapshot.office_location).trim().toLowerCase()))
   );
+  const isJobTitleDuplicate = Boolean(
+    isFlagged("job_title") &&
+      !isStudentRole &&
+      snapshot?.job_title &&
+      jobTitle.trim().toLowerCase() ===
+        String(snapshot.job_title).trim().toLowerCase()
+  );
 
   useEffect(() => {
     return () => {
@@ -281,6 +293,7 @@ export default function CompleteRegistrationForm({
     const cleanDept = department.trim();
     const cleanProgram = programOrCourse.trim();
     const cleanOffice = officeLocation.trim();
+    const cleanJobTitle = jobTitle.trim();
 
     if (
       isCampusDuplicate ||
@@ -288,7 +301,8 @@ export default function CompleteRegistrationForm({
       isNameDuplicate ||
       isRoleDuplicate ||
       isDeptDuplicate ||
-      isSubDuplicate
+      isSubDuplicate ||
+      isJobTitleDuplicate
     ) {
       setErrorMessage(
         "One or more flagged fields still contain the previous invalid value. Please correct all highlighted fields before resubmitting."
@@ -322,6 +336,10 @@ export default function CompleteRegistrationForm({
     }
     if (!isStudentRole && !cleanOffice) {
       setErrorMessage("Please select your Office.");
+      return;
+    }
+    if (!isStudentRole && !cleanJobTitle) {
+      setErrorMessage("Please enter your Job Title.");
       return;
     }
 
@@ -419,6 +437,7 @@ export default function CompleteRegistrationForm({
           p_back_path: finalBackPath,
           p_program_or_course: isStudentRole ? cleanProgram : null,
           p_office_location: isStudentRole ? null : cleanOffice,
+          p_job_title: isStudentRole ? null : cleanJobTitle,
         }
       );
 
@@ -726,10 +745,14 @@ export default function CompleteRegistrationForm({
                   required
                   value={requestedRole}
                   onChange={(e) => {
-                    setRequestedRole(e.target.value);
+                    const nextRole = e.target.value;
+                    setRequestedRole(nextRole);
                     setDepartment("");
                     setProgramOrCourse("");
                     setOfficeLocation("");
+                    if (nextRole === "student") {
+                      setJobTitle("");
+                    }
                   }}
                   className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
                     isFlagged("requested_role"),
@@ -832,6 +855,44 @@ export default function CompleteRegistrationForm({
                   ))}
                 </select>
                 {isSubDuplicate && (
+                  <p className="mt-1 text-xs font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Required Job Title (Non-Student Roles Only) */}
+            {requestedRole && !isStudentRole && (
+              <div>
+                <label
+                  htmlFor="job-title"
+                  className="block text-sm font-semibold text-slate-700"
+                >
+                  Job Title <span className="text-red-600">*</span>
+                  {isFlagged("job_title") && (
+                    <span className="ml-1.5 text-[11px] font-bold text-amber-700">
+                      (Needs correction)
+                    </span>
+                  )}
+                </label>
+                <div className="relative mt-1.5">
+                  <Briefcase className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="job-title"
+                    type="text"
+                    required
+                    maxLength={100}
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    placeholder="e.g., Instructor I, Administrative Aide IV, Records Officer"
+                    className={`w-full rounded-xl border py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
+                      isFlagged("job_title"),
+                      isJobTitleDuplicate
+                    )}`}
+                  />
+                </div>
+                {isJobTitleDuplicate && (
                   <p className="mt-1 text-xs font-semibold text-red-700">
                     {invalidDuplicateMsg}
                   </p>

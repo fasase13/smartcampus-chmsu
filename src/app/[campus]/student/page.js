@@ -9,8 +9,11 @@ import StudentPortalClient from "@/components/StudentPortalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function StudentPortalPage({ params }) {
+export default async function StudentPortalPage({ params, searchParams }) {
   const { campus: campusSlug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const initialTab =
+    resolvedSearchParams?.tab === "instructors" ? "instructors" : "news";
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
@@ -58,7 +61,7 @@ export default async function StudentPortalPage({ params }) {
   const nowIso = new Date().toISOString();
 
   // Parallel server fetches (zero client waterfalls)
-  const [announcementsRes, facultyRes, notificationsRes] = await Promise.all([
+  const [announcementsRes, facultyRes] = await Promise.all([
     supabase
       .from("announcements")
       .select(
@@ -77,12 +80,6 @@ export default async function StudentPortalPage({ params }) {
       )
       .eq("campus_id", campus.id)
       .order("full_name", { ascending: true }),
-    supabase
-      .from("notifications")
-      .select("id, type, title, message, is_read, read_at, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(50),
   ]);
 
   const activeAnnouncements = (announcementsRes.data ?? []).filter(
@@ -93,9 +90,9 @@ export default async function StudentPortalPage({ params }) {
     <StudentPortalClient
       profile={profile}
       campus={campus}
+      initialTab={initialTab}
       initialAnnouncements={activeAnnouncements}
       initialFaculty={facultyRes.data ?? []}
-      initialNotifications={notificationsRes.data ?? []}
     />
   );
 }
