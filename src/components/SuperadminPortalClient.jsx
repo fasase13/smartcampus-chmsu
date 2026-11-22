@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Activity,
@@ -19,14 +18,12 @@ import {
   FileSpreadsheet,
   Globe,
   Loader2,
-  LogOut,
   Megaphone,
   Pin,
   Plus,
   RefreshCw,
   Search,
   ShieldAlert,
-  ShieldCheck,
   Trash2,
   UserCheck,
   Users,
@@ -35,6 +32,10 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
+import PortalSidebar, {
+  SidebarToggleButton,
+  usePortalSidebarState,
+} from "@/components/PortalSidebar";
 import {
   ALL_ROLES,
   ANNOUNCEMENT_CATEGORIES,
@@ -121,6 +122,8 @@ export default function SuperadminPortalClient({
   const [activeTab, setActiveTab] = useState("overview");
   const [signingOut, setSigningOut] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
+    usePortalSidebarState();
 
   const [users, setUsers] = useState(initialUsers);
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
@@ -804,101 +807,37 @@ export default function SuperadminPortalClient({
 
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
-      {/* Unified Scrollable Sidebar with Pinned Profile Footer */}
-      <aside className="flex w-full shrink-0 flex-col border-b border-chmsu-navy/20 bg-chmsu-navy text-white lg:sticky lg:top-0 lg:h-dvh lg:w-64 lg:border-b-0 lg:border-r">
-        <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
-            <Image
-              src="/images/chmsu-logo.jpg"
-              alt="CHMSU Seal"
-              width={38}
-              height={38}
-              className="h-full w-full rounded-full object-contain"
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-tight">
-              SmartCampus CHMSU
-            </p>
-            <p className="truncate text-[11px] font-semibold text-chmsu-gold">
-              System Admin Console
-            </p>
-          </div>
-        </div>
-
-        <nav className="flex flex-wrap gap-1 overflow-y-auto p-3 lg:flex-1 lg:flex-col lg:flex-nowrap">
-          {navTabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex shrink-0 items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition ${
-                  active
-                    ? "bg-white text-chmsu-navy shadow-xs"
-                    : "text-white/85 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5 truncate">
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{tab.label}</span>
-                </span>
-                {tab.badge > 0 && (
-                  <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-chmsu-navy tabular-nums">
-                    {tab.badge}
-                  </span>
-                )}
-                {tab.alertBadge > 0 && (
-                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
-                    {tab.alertBadge}
-                  </span>
-                )}
-                {tab.alertDot && (
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500" />
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="shrink-0 border-t border-white/10 p-4">
-          <div className="rounded-xl bg-white/10 p-3">
-            <p className="truncate text-sm font-semibold text-white">
-              {profile.full_name}
-            </p>
-            <p className="truncate text-xs text-white/70">{profile.email}</p>
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-chmsu-gold px-2.5 py-0.5 text-[11px] font-bold text-chmsu-navy">
-              <ShieldCheck className="h-3 w-3" />
-              System Admin
-            </span>
-          </div>
-
-          <button
-            type="button"
-            disabled={signingOut}
-            onClick={handleSignOut}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-600/80 disabled:opacity-60"
-          >
-            <LogOut className="h-4 w-4" />
-            {signingOut ? "Signing out..." : "Sign Out"}
-          </button>
-        </div>
-      </aside>
+      <PortalSidebar
+        title="SmartCampus CHMSU"
+        subtitle="System Admin Console"
+        navItems={navTabs}
+        activeId={activeTab}
+        onSelect={setActiveTab}
+        profile={profile}
+        roleBadge="System Admin"
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+        collapsed={collapsed}
+        mobileOpen={mobileOpen}
+        onCloseMobile={closeMobile}
+        ariaLabel="System Admin Navigation"
+      />
 
       {/* Main Content */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-chmsu-forest">
-                University-Wide System Admin Control
-              </p>
-              <p className="text-xs text-slate-500">
-                4 CHMSU Campuses &bull; Talisay, Alijis, Binalbagan, Fortune
-                Towne
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <SidebarToggleButton onClick={toggleSidebar} />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-chmsu-forest">
+                  University-Wide System Admin Control
+                </p>
+                <p className="truncate text-xs text-slate-500">
+                  4 CHMSU Campuses &bull; Talisay, Alijis, Binalbagan, Fortune
+                  Towne
+                </p>
+              </div>
             </div>
 
             {settings?.maintenance_mode && (

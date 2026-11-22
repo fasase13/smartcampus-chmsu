@@ -25,6 +25,10 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import PortalSidebar, {
+  SidebarToggleButton,
+  usePortalSidebarState,
+} from "@/components/PortalSidebar";
 import {
   ANNOUNCEMENT_CATEGORIES,
   DOCUMENT_STATUS_META,
@@ -58,6 +62,8 @@ export default function StudentPortalClient({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("news");
   const [signingOut, setSigningOut] = useState(false);
+  const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
+    usePortalSidebarState();
 
   // Live data states
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
@@ -333,98 +339,47 @@ export default function StudentPortalClient({
       }
     : null;
 
+  const sidebarNavItems = tabs.map((tab) => ({
+    id: tab.id,
+    label: tab.desktopLabel,
+    icon: tab.icon,
+    alertBadge: tab.badge,
+  }));
+
   return (
-    <div className="min-h-dvh flex flex-col overflow-x-hidden bg-chmsu-canvas text-slate-900 md:flex-row">
+    <div className="min-h-dvh flex flex-col overflow-x-hidden bg-chmsu-canvas text-slate-900 lg:flex-row">
       <PrivacyTermsGate profile={profile} />
-      {/* Desktop Sidebar */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-chmsu-forest/15 bg-chmsu-forest text-white md:flex">
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
-            <Image
-              src="/images/chmsu-logo.jpg"
-              alt="CHMSU Seal"
-              width={38}
-              height={38}
-              className="h-full w-full rounded-full object-contain"
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-tight">
-              Student Portal
-            </p>
-            <p className="truncate text-[11px] font-medium text-chmsu-gold">
-              CHMSU {campus.name}
-            </p>
-          </div>
-        </div>
 
-        <nav className="flex-1 space-y-1 p-3" aria-label="Student Navigation">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
-                  isActive
-                    ? "bg-chmsu-green text-white shadow-xs"
-                    : "text-white/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-3">
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>{tab.desktopLabel}</span>
-                </span>
-                {tab.badge > 0 && (
-                  <span className="rounded-full bg-chmsu-flame px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="border-t border-white/10 p-4">
-          <div className="rounded-xl bg-white/10 p-3">
-            <p className="truncate text-sm font-semibold text-white">
-              {profile.full_name}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-white/75">
-              {profile.email}
-            </p>
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-chmsu-gold px-2.5 py-0.5 text-[11px] font-bold text-chmsu-forest">
-              <Building2 className="h-3 w-3" />
-              {campus.name}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={signingOut}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-600/80 disabled:opacity-60"
-          >
-            <LogOut className="h-4 w-4" />
-            {signingOut ? "Signing out..." : "Sign Out"}
-          </button>
-        </div>
-      </aside>
+      <PortalSidebar
+        title="Student Portal"
+        subtitle={`CHMSU ${campus.name}`}
+        navItems={sidebarNavItems}
+        activeId={activeTab}
+        onSelect={setActiveTab}
+        profile={profile}
+        roleBadge={`Student • ${campus.name}`}
+        roleIcon={Building2}
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+        collapsed={collapsed}
+        mobileOpen={mobileOpen}
+        onCloseMobile={closeMobile}
+        ariaLabel="Student Navigation"
+      />
 
       {/* Main Column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Sticky Header */}
         <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex min-w-0 items-center gap-3">
+              <SidebarToggleButton onClick={toggleSidebar} />
               <Image
                 src="/images/chmsu-logo.jpg"
                 alt="CHMSU Seal"
                 width={36}
                 height={36}
-                className="h-9 w-9 shrink-0 rounded-full object-contain md:hidden"
+                className="h-9 w-9 shrink-0 rounded-full object-contain lg:hidden"
               />
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-chmsu-forest sm:text-base">
@@ -436,7 +391,7 @@ export default function StudentPortalClient({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 md:hidden">
+            <div className="flex shrink-0 items-center gap-2 lg:hidden">
               <button
                 type="button"
                 onClick={handleSignOut}

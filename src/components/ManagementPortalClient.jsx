@@ -28,7 +28,6 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
-  ShieldCheck,
   UserCheck,
   Users,
   X,
@@ -37,6 +36,10 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import PortalSidebar, {
+  SidebarToggleButton,
+  usePortalSidebarState,
+} from "@/components/PortalSidebar";
 import {
   ALL_ROLES,
   DOCUMENT_STATUS_META,
@@ -118,6 +121,8 @@ export default function ManagementPortalClient({
   const [activeTab, setActiveTab] = useState("overview");
   const [selectedCampusId, setSelectedCampusId] = useState("all");
   const [signingOut, setSigningOut] = useState(false);
+  const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
+    usePortalSidebarState();
 
   // Core Data States
   const [documents, setDocuments] = useState(initialDocuments);
@@ -923,79 +928,27 @@ export default function ManagementPortalClient({
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
       <PrivacyTermsGate profile={profile} />
-      {/* Sidebar (hidden on print) */}
-      <aside className="no-print flex w-full shrink-0 flex-col border-b border-chmsu-navy/20 bg-chmsu-navy text-white lg:w-64 lg:border-b-0 lg:border-r">
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
-            <Image
-              src="/images/chmsu-logo.jpg"
-              alt="CHMSU Seal"
-              width={38}
-              height={38}
-              className="h-full w-full rounded-full object-contain"
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-tight">
-              SmartCampus CHMSU
-            </p>
-            <p className="truncate text-[11px] font-semibold text-chmsu-gold">
-              {isAdmin ? "Superadmin" : "Institutional Management"}
-            </p>
-          </div>
-        </div>
 
-        <nav className="flex flex-wrap gap-1 p-3 lg:flex-1 lg:flex-col">
-          {navTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition ${
-                  isActive
-                    ? "bg-chmsu-green text-white shadow-xs"
-                    : "text-white/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5">
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span>{tab.label}</span>
-                </span>
-                {tab.badge > 0 && (
-                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="hidden border-t border-white/10 p-4 lg:block">
-          <div className="rounded-xl bg-white/10 p-3">
-            <p className="truncate text-sm font-semibold text-white">
-              {profile.full_name}
-            </p>
-            <p className="truncate text-xs text-white/75">{profile.email}</p>
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-chmsu-gold px-2.5 py-0.5 text-[11px] font-bold text-chmsu-forest">
-              <ShieldCheck className="h-3 w-3" />
-              {ROLE_LABELS[profile.role] ?? profile.role}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            disabled={signingOut}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-600/80 disabled:opacity-60"
-          >
-            <LogOut className="h-4 w-4" />
-            {signingOut ? "Signing out..." : "Sign Out"}
-          </button>
-        </div>
-      </aside>
+      <PortalSidebar
+        title="SmartCampus CHMSU"
+        subtitle={isAdmin ? "Superadmin" : "Institutional Management"}
+        navItems={navTabs.map((t) => ({
+          id: t.id,
+          label: t.label,
+          icon: t.icon,
+          alertBadge: t.badge,
+        }))}
+        activeId={activeTab}
+        onSelect={setActiveTab}
+        profile={profile}
+        roleBadge={ROLE_LABELS[profile.role] ?? profile.role}
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+        collapsed={collapsed}
+        mobileOpen={mobileOpen}
+        onCloseMobile={closeMobile}
+        ariaLabel="Management Navigation"
+      />
 
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -1003,6 +956,7 @@ export default function ManagementPortalClient({
         <header className="no-print sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2.5">
+              <SidebarToggleButton onClick={toggleSidebar} />
               <label
                 htmlFor="mgmt_campus_scope"
                 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500"

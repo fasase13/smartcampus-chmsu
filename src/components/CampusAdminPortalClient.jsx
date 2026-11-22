@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -11,13 +10,11 @@ import {
   Eye,
   FileText,
   Loader2,
-  LogOut,
   Megaphone,
   Pin,
   Plus,
   RefreshCw,
   Search,
-  ShieldCheck,
   Trash2,
   UserCheck,
   Users,
@@ -25,6 +22,10 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
+import PortalSidebar, {
+  SidebarToggleButton,
+  usePortalSidebarState,
+} from "@/components/PortalSidebar";
 import {
   ANNOUNCEMENT_CATEGORIES,
   ANNOUNCEMENT_PRIORITIES,
@@ -76,6 +77,8 @@ export default function CampusAdminPortalClient({
   const [activeTab, setActiveTab] = useState("registrations");
   const [signingOut, setSigningOut] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
+    usePortalSidebarState();
 
   const [users, setUsers] = useState(initialUsers);
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
@@ -89,12 +92,11 @@ export default function CampusAdminPortalClient({
   const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT);
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
-  // Campus users directory & edit modal
+  // Campus users directory & read-only details modal
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState("all");
-  const [editingUser, setEditingUser] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-  const [savingUser, setSavingUser] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [togglingUserStatus, setTogglingUserStatus] = useState(false);
 
   const refreshUsers = useCallback(async () => {
     const supabase = createClient();
@@ -301,43 +303,33 @@ export default function CampusAdminPortalClient({
     setFeedback({ type: "success", message: "Campus announcement deleted." });
   }
 
-  // Edit Campus User
-  function openEditUser(target) {
-    setEditingUser(target);
-    setEditForm({
-      role: target.role,
-      department: target.department ?? "",
-      office_location: target.office_location ?? "",
-      show_on_kiosk: Boolean(target.show_on_kiosk),
-      is_active: Boolean(target.is_active),
-    });
-  }
-
-  async function handleSaveUser(e) {
-    e.preventDefault();
-    if (!editingUser || !editForm) return;
-    if (!CAMPUS_ADMIN_ASSIGNABLE_ROLES.includes(editForm.role)) {
+  // Toggle Campus User Active Status ONLY (strictly scoped to campus_id)
+  async function handleToggleUserActive() {
+    if (!selectedUser) return;
+    if (selectedUser.id === profile.id) {
       setFeedback({
         type: "error",
-        message: "Campus Admins cannot assign superadmin or campus_admin roles.",
+        message: "You cannot deactivate your own account.",
+      });
+      return;
+    }
+    if ([ROLES.SUPERADMIN, ROLES.CAMPUS_ADMIN].includes(selectedUser.role)) {
+      setFeedback({
+        type: "error",
+        message: "Admin accounts cannot be modified from the campus directory.",
       });
       return;
     }
 
-    setSavingUser(true);
+    const nextActive = !selectedUser.is_active;
+    setTogglingUserStatus(true);
     setFeedback(null);
     try {
       const supabase = createClient();
       const { error } = await supabase
         .from("profiles")
-        .update({
-          role: editForm.role,
-          department: editForm.department.trim() || null,
-          office_location: editForm.office_location.trim() || null,
-          show_on_kiosk: Boolean(editForm.show_on_kiosk),
-          is_active: Boolean(editForm.is_active),
-        })
-        .eq("id", editingUser.id)
+        .update({ is_active: nextActive })
+        .eq("id", selectedUser.id)
         .eq("campus_id", campus.id);
 
       if (error) {
@@ -345,15 +337,23 @@ export default function CampusAdminPortalClient({
         return;
       }
 
-      setEditingUser(null);
-      setEditForm(null);
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === selectedUser.id ? { ...u, is_active: nextActive } : u
+        )
+      );
+      setSelectedUser((prev) =>
+        prev ? { ...prev, is_active: nextActive } : null
+      );
       await refreshUsers();
       setFeedback({
-        type: "success",
-        message: `Updated ${editingUser.full_name}.`,
+        type: nextActive ? "success" : "warning",
+        message: nextActive
+          ? `Reactivated account for ${selectedUser.full_name}.`
+          : `Deactivated account for ${selectedUser.full_name}.`,
       });
     } finally {
-      setSavingUser(false);
+      setTogglingUserStatus(false);
     }
   }
 
@@ -412,97 +412,36 @@ export default function CampusAdminPortalClient({
 
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
-      {/* Sidebar */}
-      <aside className="flex w-full shrink-0 flex-col border-b border-chmsu-forest/15 bg-chmsu-forest text-white lg:w-64 lg:border-b-0 lg:border-r">
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white p-0.5">
-            <Image
-              src="/images/chmsu-logo.jpg"
-              alt="CHMSU Seal"
-              width={38}
-              height={38}
-              className="h-full w-full rounded-full object-contain"
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold tracking-tight">
-              {campusAdminTitle}
-            </p>
-            <p className="truncate text-[11px] font-semibold text-chmsu-gold">
-              CHMSU {campus.name}
-            </p>
-          </div>
-        </div>
-
-        <nav className="flex flex-wrap gap-1 p-3 lg:flex-1 lg:flex-col">
-          {navTabs.map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition ${
-                  active
-                    ? "bg-white text-chmsu-forest shadow-xs"
-                    : "text-white/85 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <span className="flex items-center gap-2.5 truncate">
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{tab.label}</span>
-                </span>
-                {tab.badge > 0 && (
-                  <span className="rounded-full bg-chmsu-gold px-2 py-0.5 text-[11px] font-bold text-chmsu-forest tabular-nums">
-                    {tab.badge}
-                  </span>
-                )}
-                {tab.alertCount > 0 && (
-                  <span className="rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
-                    {tab.alertCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </nav>
-
-        <div className="border-t border-white/10 p-4">
-          <div className="rounded-xl bg-white/10 p-3">
-            <p className="truncate text-sm font-semibold text-white">
-              {profile.full_name}
-            </p>
-            <p className="truncate text-xs text-white/75">{profile.email}</p>
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-chmsu-gold px-2.5 py-0.5 text-[11px] font-bold text-chmsu-forest">
-              <ShieldCheck className="h-3 w-3" />
-              {campusAdminTitle}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            disabled={signingOut}
-            onClick={handleSignOut}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-600/80 disabled:opacity-60"
-          >
-            <LogOut className="h-4 w-4" />
-            {signingOut ? "Signing out..." : "Sign Out"}
-          </button>
-        </div>
-      </aside>
+      <PortalSidebar
+        title={campusAdminTitle}
+        subtitle={`CHMSU ${campus.name}`}
+        navItems={navTabs}
+        activeId={activeTab}
+        onSelect={setActiveTab}
+        profile={profile}
+        roleBadge={campusAdminTitle}
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+        collapsed={collapsed}
+        mobileOpen={mobileOpen}
+        onCloseMobile={closeMobile}
+        ariaLabel="Campus Admin Navigation"
+      />
 
       {/* Main Content */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-chmsu-forest">
-                {campusAdminTitle} Portal
-              </p>
-              <p className="text-xs text-slate-500">
-                CHMSU {campus.name} &bull; Campus Administration
-              </p>
+            <div className="flex min-w-0 items-center gap-3">
+              <SidebarToggleButton onClick={toggleSidebar} />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold text-chmsu-forest">
+                  {campusAdminTitle} Portal
+                </p>
+                <p className="truncate text-xs text-slate-500">
+                  CHMSU {campus.name} &bull; Campus Administration
+                </p>
+              </div>
             </div>
           </div>
         </header>
@@ -867,8 +806,8 @@ export default function CampusAdminPortalClient({
                   Campus Users &amp; Directory
                 </h1>
                 <p className="text-sm text-slate-600">
-                  Manage active Students, Faculty, Staff, Department Heads, and
-                  RMO Staff at CHMSU {campus.name}.
+                  View campus user details and manage account activation status
+                  for your campus.
                 </p>
               </div>
 
@@ -905,68 +844,56 @@ export default function CampusAdminPortalClient({
                         <th className="px-5 py-3">User</th>
                         <th className="px-4 py-3">Role</th>
                         <th className="px-4 py-3">Status</th>
-                        <th className="px-5 py-3 text-right">Manage</th>
+                        <th className="px-5 py-3 text-left">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-chmsu-border">
-                      {directoryUsers.map((u) => {
-                        const isProtectedRole = [
-                          ROLES.SUPERADMIN,
-                          ROLES.CAMPUS_ADMIN,
-                        ].includes(u.role);
-                        return (
-                          <tr
-                            key={u.id}
-                            className={!u.is_active ? "bg-slate-50 opacity-65" : ""}
-                          >
-                            <td className="px-5 py-3">
-                              <p className="font-semibold text-slate-900">
-                                {u.full_name}
-                              </p>
-                              <p className="text-xs text-slate-500">
-                                {u.employee_or_student_id ? (
-                                  <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
-                                    ID {u.employee_or_student_id}
-                                  </span>
-                                ) : null}
-                                {u.email}
-                                {u.department ? ` • ${u.department}` : ""}
-                              </p>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
-                                {ROLE_LABELS[u.role] ?? u.role}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span
-                                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                  u.is_active
-                                    ? "bg-emerald-100 text-emerald-800"
-                                    : "bg-red-100 text-red-800"
-                                }`}
-                              >
-                                {u.is_active ? "Active" : "Inactive"}
-                              </span>
-                            </td>
-                            <td className="px-5 py-3 text-right">
-                              {!isProtectedRole ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openEditUser(u)}
-                                  className="rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green"
-                                >
-                                  Edit
-                                </button>
-                              ) : (
-                                <span className="text-xs text-slate-400">
-                                  Protected
+                      {directoryUsers.map((u) => (
+                        <tr
+                          key={u.id}
+                          className={!u.is_active ? "bg-slate-50 opacity-65" : ""}
+                        >
+                          <td className="px-5 py-3">
+                            <p className="font-semibold text-slate-900">
+                              {u.full_name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {u.employee_or_student_id ? (
+                                <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
+                                  ID {u.employee_or_student_id}
                                 </span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
+                              ) : null}
+                              {u.email}
+                              {u.department ? ` • ${u.department}` : ""}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                              {ROLE_LABELS[u.role] ?? u.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                u.is_active
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {u.is_active ? "Active" : "Deactivated"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-left">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedUser(u)}
+                              className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest transition hover:border-chmsu-green"
+                            >
+                              View Details
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -1095,8 +1022,8 @@ export default function CampusAdminPortalClient({
         />
       )}
 
-      {/* Edit Campus User Modal */}
-      {editingUser && editForm && (
+      {/* Read-Only User Details Modal (Activation Toggle Only) */}
+      {selectedUser && (
         <div
           role="dialog"
           aria-modal="true"
@@ -1105,124 +1032,161 @@ export default function CampusAdminPortalClient({
           <div className="w-full max-w-md overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-xl">
             <div className="flex items-center justify-between bg-chmsu-forest px-5 py-4 text-white">
               <div>
-                <h3 className="text-base font-bold">Edit Campus User</h3>
-                <p className="text-xs text-chmsu-gold">{editingUser.full_name}</p>
+                <h3 className="text-base font-bold">User Details</h3>
+                <p className="text-xs text-chmsu-gold">
+                  {selectedUser.full_name}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setEditingUser(null);
-                  setEditForm(null);
-                }}
+                onClick={() => setSelectedUser(null)}
                 className="rounded-lg p-1 text-white/80 hover:bg-white/10"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveUser} className="space-y-4 p-5">
-              <div>
-                <label className="block text-xs font-semibold uppercase text-slate-600">
-                  Role
-                </label>
-                <select
-                  value={editForm.role}
-                  onChange={(e) =>
-                    setEditForm({ ...editForm, role: e.target.value })
-                  }
-                  className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                >
-                  {CAMPUS_ADMIN_ASSIGNABLE_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABELS[r] ?? r}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600">
-                    Department
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.department}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, department: e.target.value })
-                    }
-                    className="mt-1 w-full rounded-xl border border-chmsu-border px-3 py-2 text-sm"
-                  />
+            <div className="space-y-4 p-5">
+              <div className="divide-y divide-chmsu-border rounded-xl border border-chmsu-border bg-chmsu-canvas text-sm">
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Full Name
+                  </span>
+                  <span className="text-right font-semibold text-slate-900">
+                    {selectedUser.full_name}
+                  </span>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase text-slate-600">
-                    Office Location
-                  </label>
-                  <input
-                    type="text"
-                    value={editForm.office_location}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        office_location: e.target.value,
-                      })
-                    }
-                    className="mt-1 w-full rounded-xl border border-chmsu-border px-3 py-2 text-sm"
-                  />
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Email
+                  </span>
+                  <span className="truncate text-right text-xs font-medium text-slate-800">
+                    {selectedUser.email}
+                  </span>
+                </div>
+
+                {selectedUser.employee_or_student_id && (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      School ID
+                    </span>
+                    <span className="rounded border border-chmsu-border bg-white px-2 py-0.5 font-mono text-xs font-bold tracking-widest text-chmsu-forest">
+                      {selectedUser.employee_or_student_id}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Role
+                  </span>
+                  <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                    {ROLE_LABELS[selectedUser.role] ?? selectedUser.role}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Campus
+                  </span>
+                  <span className="text-right text-xs font-semibold text-slate-800">
+                    CHMSU {campus.name}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    College / Department
+                  </span>
+                  <span className="text-right text-xs font-medium text-slate-800">
+                    {selectedUser.department || "—"}
+                  </span>
+                </div>
+
+                {selectedUser.role === ROLES.STUDENT ||
+                selectedUser.program_or_course ? (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      Program
+                    </span>
+                    <span className="text-right text-xs font-medium text-slate-800">
+                      {selectedUser.program_or_course || "—"}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      Office
+                    </span>
+                    <span className="text-right text-xs font-medium text-slate-800">
+                      {selectedUser.office_location || "—"}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-xs font-semibold text-slate-500">
+                    Status
+                  </span>
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                      selectedUser.is_active
+                        ? "bg-emerald-100 text-emerald-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {selectedUser.is_active ? "Active" : "Deactivated"}
+                  </span>
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-4 text-sm font-medium text-slate-700">
-                <label className="inline-flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={editForm.show_on_kiosk}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        show_on_kiosk: e.target.checked,
-                      })
-                    }
-                    className="h-4 w-4 accent-chmsu-green"
-                  />
-                  Show on Kiosk
-                </label>
-                <label className="inline-flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={editForm.is_active}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, is_active: e.target.checked })
-                    }
-                    className="h-4 w-4 accent-chmsu-green"
-                  />
-                  Account Active
-                </label>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    setEditingUser(null);
-                    setEditForm(null);
-                  }}
-                  className="rounded-xl border border-chmsu-border px-4 py-2 text-xs font-semibold text-slate-600"
+                  onClick={() => setSelectedUser(null)}
+                  className="rounded-xl border border-chmsu-border px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
-                  Cancel
+                  Close
                 </button>
-                <button
-                  type="submit"
-                  disabled={savingUser}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-semibold text-white hover:bg-chmsu-green"
-                >
-                  {savingUser && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  )}
-                  Save Changes
-                </button>
+
+                {selectedUser.id === profile.id ? (
+                  <p className="text-xs font-medium text-amber-700">
+                    You cannot deactivate your own account.
+                  </p>
+                ) : [ROLES.SUPERADMIN, ROLES.CAMPUS_ADMIN].includes(
+                    selectedUser.role
+                  ) ? (
+                  <p className="text-xs font-medium text-slate-500">
+                    Admin accounts cannot be deactivated here.
+                  </p>
+                ) : selectedUser.is_active ? (
+                  <button
+                    type="button"
+                    disabled={togglingUserStatus}
+                    onClick={handleToggleUserActive}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+                  >
+                    {togglingUserStatus && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Deactivate Account
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={togglingUserStatus}
+                    onClick={handleToggleUserActive}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-bold text-white transition hover:bg-chmsu-green disabled:opacity-60"
+                  >
+                    {togglingUserStatus && (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    )}
+                    Reactivate Account
+                  </button>
+                )}
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
