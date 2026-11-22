@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   AlertCircle,
+  Calendar,
+  Clock,
   Pin,
   PinOff,
   Pencil,
@@ -12,22 +16,50 @@ import {
   EyeOff,
   Plus,
   Save,
+  Search,
   Loader2,
   MapPin,
   Globe,
   Building2,
   Radio,
   X,
+  QrCode,
+  Newspaper,
+  Megaphone,
+  User,
+  UserCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import PortalSidebar, {
+  SidebarToggleButton,
+  usePortalSidebarState,
+} from "@/components/PortalSidebar";
+import OfficeScannerClient from "@/components/OfficeScannerClient";
 import {
   ANNOUNCEMENT_CATEGORIES,
   ANNOUNCEMENT_PRIORITIES,
   AVAILABILITY_STATUSES,
   CROSS_CAMPUS_ROLES,
-  ROLES,
+  ROLE_LABELS,
   getAvailabilityMeta,
 } from "@/lib/constants";
+
+const NEWS_CATEGORIES = [
+  { value: "all", label: "All" },
+  ...ANNOUNCEMENT_CATEGORIES,
+];
+
+function formatDateTime(isoString) {
+  if (!isoString) return "—";
+  return new Intl.DateTimeFormat("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(isoString));
+}
 
 function toLocalDateTimeInput(isoString) {
   if (!isoString) return "";
@@ -57,9 +89,46 @@ const EMPTY_FORM = {
 export default function FacultyPortalClient({
   profile,
   campus,
+  initialTab = "manage",
   initialAnnouncements,
+  allCampuses = [],
+  staffDirectory = [],
+  initialDocuments = [],
 }) {
+  const router = useRouter();
   const canPublishUniversityWide = CROSS_CAMPUS_ROLES.includes(profile.role);
+  const roleLabel = ROLE_LABELS[profile?.role] ?? profile?.role ?? "Faculty";
+
+  // Unified client-side tab state & sidebar collapse state
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [scannerCameraActive, setScannerCameraActive] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
+    usePortalSidebarState();
+
+  function handleSelectTab(nextTab) {
+    if (nextTab !== "queue") {
+      setScannerCameraActive(false);
+    }
+    setActiveTab(nextTab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", nextTab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      router.push("/");
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   // Availability state
   const [availabilityStatus, setAvailabilityStatus] = useState(
@@ -76,6 +145,9 @@ export default function FacultyPortalClient({
 
   // Announcements state
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
+  const [mountedAt] = useState(() => Date.now());
+  const [newsQuery, setNewsQuery] = useState("");
+  const [newsCategory, setNewsCategory] = useState("all");
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
@@ -100,19 +172,40 @@ export default function FacultyPortalClient({
     });
   }
 
-  async function refreshAnnouncements(supabase) {
-    const { data } = await supabase
-      .from("announcements")
-      .select(
-        "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at"
-      )
-      .or(`campus_id.eq.${campus.id},campus_id.is.null`)
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(100);
+  const refreshAnnouncements = useCallback(
+    async (existingClient) => {
+      const supabase = existingClient ?? createClient();
+      const { data } = await supabase
+        .from("announcements")
+        .select(
+          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, author:author_id(full_name, department, office_location)"
+        )
+        .or(`campus_id.eq.${campus.id},campus_id.is.null`)
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(100);
 
-    if (data) setAnnouncements(data);
-  }
+      if (data) setAnnouncements(data);
+    },
+    [campus.id]
+  );
+
+  // Live Realtime sync for campus announcements across tabs
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`faculty-announcements-${campus.slug}-${profile.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "announcements" },
+        () => refreshAnnouncements()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [campus.slug, profile.id, refreshAnnouncements]);
 
   // Update live availability immediately
   async function updateAvailability(overrides = {}) {
@@ -207,6 +300,7 @@ export default function FacultyPortalClient({
           .from("announcements")
           .update(payload)
           .eq("id", editingId)
+          .eq("author_id", profile.id)
           .select("id, title, category, priority, is_public, is_pinned")
           .single();
 
@@ -272,6 +366,7 @@ export default function FacultyPortalClient({
   }
 
   function startEditing(item) {
+    if (item.author_id !== profile.id) return;
     setEditingId(item.id);
     setForm({
       title: item.title ?? "",
@@ -285,10 +380,12 @@ export default function FacultyPortalClient({
       is_pinned: Boolean(item.is_pinned),
       university_wide: item.campus_id === null,
     });
+    handleSelectTab("manage");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function togglePin(item) {
+    if (item.author_id !== profile.id) return;
     setBusyRowId(item.id);
     setFeedback(null);
     try {
@@ -297,7 +394,8 @@ export default function FacultyPortalClient({
       const { error } = await supabase
         .from("announcements")
         .update({ is_pinned: nextPinned })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .eq("author_id", profile.id);
 
       if (error) {
         showFeedback("error", error.message);
@@ -315,7 +413,7 @@ export default function FacultyPortalClient({
       await refreshAnnouncements(supabase);
       showFeedback(
         "success",
-        nextPinned ? "Announcement pinned to kiosk." : "Announcement unpinned."
+        nextPinned ? "Announcement pinned." : "Announcement unpinned."
       );
     } finally {
       setBusyRowId(null);
@@ -323,6 +421,7 @@ export default function FacultyPortalClient({
   }
 
   async function toggleActive(item) {
+    if (item.author_id !== profile.id) return;
     setBusyRowId(item.id);
     setFeedback(null);
     try {
@@ -331,7 +430,8 @@ export default function FacultyPortalClient({
       const { error } = await supabase
         .from("announcements")
         .update({ is_active: nextActive })
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .eq("author_id", profile.id);
 
       if (error) {
         showFeedback("error", error.message);
@@ -357,8 +457,9 @@ export default function FacultyPortalClient({
   }
 
   async function deleteAnnouncement(item) {
+    if (item.author_id !== profile.id) return;
     const confirmed = window.confirm(
-      `Permanently delete "${item.title}"? This action will be recorded in the audit log.`
+      `Permanently delete "${item.title}"?`
     );
     if (!confirmed) return;
 
@@ -369,7 +470,8 @@ export default function FacultyPortalClient({
       const { error } = await supabase
         .from("announcements")
         .delete()
-        .eq("id", item.id);
+        .eq("id", item.id)
+        .eq("author_id", profile.id);
 
       if (error) {
         showFeedback("error", error.message);
@@ -396,84 +498,191 @@ export default function FacultyPortalClient({
     }
   }
 
-  function canEditRow(item) {
-    if (profile.role === ROLES.SUPERADMIN) return true;
-    if (profile.role === ROLES.CAMPUS_ADMIN && item.campus_id === campus.id) {
-      return true;
-    }
-    if (profile.role === ROLES.MANAGEMENT && (item.campus_id === null || item.campus_id === campus.id)) {
-      return true;
-    }
-    if (item.author_id === profile.id) return true;
-    if ([ROLES.RMO, ROLES.DEPT_HEAD].includes(profile.role) && item.campus_id === campus.id) {
-      return true;
-    }
-    return false;
-  }
-
-  function canDeleteRow(item) {
-    return (
-      profile.role === ROLES.SUPERADMIN ||
-      (profile.role === ROLES.CAMPUS_ADMIN && item.campus_id === campus.id) ||
-      item.author_id === profile.id
+  // Active announcements visible in the read-only Campus Announcements feed
+  const activeFeedAnnouncements = useMemo(() => {
+    return announcements.filter(
+      (a) =>
+        a.is_active &&
+        (!a.expires_at || new Date(a.expires_at).getTime() > mountedAt)
     );
-  }
+  }, [announcements, mountedAt]);
+
+  const filteredFeedAnnouncements = useMemo(() => {
+    const q = newsQuery.trim().toLowerCase();
+    return activeFeedAnnouncements.filter((a) => {
+      const catMatch = newsCategory === "all" || a.category === newsCategory;
+      if (!catMatch) return false;
+      if (!q) return true;
+      return (
+        a.title?.toLowerCase().includes(q) ||
+        a.body?.toLowerCase().includes(q) ||
+        a.author?.full_name?.toLowerCase().includes(q) ||
+        a.author?.office_location?.toLowerCase().includes(q)
+      );
+    });
+  }, [activeFeedAnnouncements, newsQuery, newsCategory]);
+
+  // Own announcements ONLY (strictly scoped to currentUser.id)
+  const myAnnouncements = useMemo(
+    () => announcements.filter((a) => a.author_id === profile.id),
+    [announcements, profile.id]
+  );
 
   const currentStatusMeta = getAvailabilityMeta(availabilityStatus);
 
+  const navItems = [
+    {
+      id: "queue",
+      label: "QR Scanner & Office Queue",
+      icon: QrCode,
+    },
+    {
+      id: "announcements",
+      label: "Campus Announcements",
+      icon: Newspaper,
+      badge: activeFeedAnnouncements.length,
+    },
+    {
+      id: "manage",
+      label: "Announcements & Availability",
+      icon: Megaphone,
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Page Heading */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-chmsu-forest">
-            Faculty &amp; Staff Portal
-          </h1>
-          <p className="mt-0.5 text-sm text-slate-600">
-            Manage your real-time kiosk availability and publish campus notices
-            for CHMSU {campus.name}.
-          </p>
-        </div>
+    <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
+      <PrivacyTermsGate profile={profile} />
 
-        <span
-          className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
-        >
-          <span className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`} />
-          Status: {currentStatusMeta.label}
-        </span>
-      </div>
+      <PortalSidebar
+        title="SmartCampus CHMSU"
+        subtitle={`CHMSU ${campus.name}`}
+        navItems={navItems}
+        activeId={activeTab}
+        onSelect={handleSelectTab}
+        profile={profile}
+        roleBadge={roleLabel}
+        roleIcon={UserCheck}
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+        collapsed={collapsed}
+        onToggleCollapse={toggleSidebar}
+        mobileOpen={mobileOpen}
+        onCloseMobile={closeMobile}
+        ariaLabel="Faculty Portal Navigation"
+      />
 
-      {/* Feedback Banner */}
-      {feedback && (
-        <div
-          role="status"
-          className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-            feedback.type === "error"
-              ? "border-red-200 bg-red-50 text-red-800"
-              : "border-emerald-200 bg-emerald-50 text-emerald-900"
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            {feedback.type === "error" ? (
-              <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            )}
-            <span>{feedback.message}</span>
+      {/* Main Content Wrapper */}
+      <div
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
+        {/* Sticky Top Header Bar */}
+        <header className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <SidebarToggleButton onClick={toggleSidebar} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <nav
+                  aria-label="Breadcrumb"
+                  className="flex items-center gap-1.5 text-xs font-medium text-slate-500"
+                >
+                  <Link href="/" className="hover:text-chmsu-forest">
+                    Gateway
+                  </Link>
+                  <span>/</span>
+                  <span className="truncate font-semibold text-chmsu-forest">
+                    CHMSU {campus.name}
+                  </span>
+                </nav>
+                <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
+                  {roleLabel}
+                </span>
+              </div>
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setFeedback(null)}
-            aria-label="Dismiss message"
-            className="rounded-md p-1 hover:bg-black/5"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
 
-      {/* Top Grid: Live Availability Card + Announcement Composer */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <div className="hidden text-right sm:block">
+            <p className="text-sm font-semibold text-slate-900">
+              {profile?.full_name}
+            </p>
+            <p className="text-xs text-slate-500">
+              {profile?.department || profile?.email}
+            </p>
+          </div>
+        </header>
+
+        {/* Page Body */}
+        <main className="w-full flex-1 space-y-6 px-4 py-5 sm:px-6">
+          {/* Feedback Banner */}
+          {feedback && (
+            <div
+              role="status"
+              className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+                feedback.type === "error"
+                  ? "border-red-200 bg-red-50 text-red-800"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-900"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                {feedback.type === "error" ? (
+                  <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                )}
+                <span>{feedback.message}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                aria-label="Dismiss message"
+                className="rounded-md p-1 hover:bg-black/5"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* TAB 1: QR SCANNER & OFFICE QUEUE (Kept mounted so queue data stays cached; camera stops on tab switch) */}
+          <div className={activeTab === "queue" ? "" : "hidden"}>
+            <OfficeScannerClient
+              profile={profile}
+              campus={campus}
+              allCampuses={allCampuses}
+              staffDirectory={staffDirectory}
+              initialDocuments={initialDocuments}
+              controlledCameraActive={scannerCameraActive}
+              onCameraActiveChange={setScannerCameraActive}
+            />
+          </div>
+
+          {/* TAB 3: ANNOUNCEMENTS & AVAILABILITY (Availability + Publish Composer ONLY) */}
+          {activeTab === "manage" && (
+            <div className="space-y-6">
+              {/* Page Heading */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-chmsu-forest">
+                    Announcements &amp; Availability
+                  </h1>
+                  <p className="mt-0.5 text-sm text-slate-600">
+                    Manage your real-time kiosk availability and publish campus
+                    notices for CHMSU {campus.name}.
+                  </p>
+                </div>
+
+                <span
+                  className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
+                  />
+                  Status: {currentStatusMeta.label}
+                </span>
+              </div>
+
+              {/* Side-by-Side Grid: Live Availability Card + Announcement Composer */}
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         {/* 1. Live Availability Control Card */}
         <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-5">
           <div className="flex items-start justify-between gap-3">
@@ -820,181 +1029,341 @@ export default function FacultyPortalClient({
             </div>
           </form>
         </section>
-      </div>
+              </div>
 
-      {/* 3. Active Announcements Table */}
-      <section className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-chmsu-border px-5 py-4">
-          <div>
-            <h2 className="text-lg font-bold text-chmsu-forest">
-              Campus Announcements
-            </h2>
-            <p className="text-xs text-slate-500">
-              All changes are logged to <code className="font-mono">audit_logs</code>{" "}
-              and reflected live on the kiosk.
-            </p>
-          </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
-            {announcements.length} total
-          </span>
-        </div>
+              {/* My Published Announcements (Own Posts ONLY) */}
+              <section className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-chmsu-border px-5 py-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-chmsu-forest">
+                      My Published Announcements
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      View, edit, pin, toggle visibility, or delete
+                      announcements you have published.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
+                    {myAnnouncements.length} published
+                  </span>
+                </div>
 
-        {announcements.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
-            No announcements posted for CHMSU {campus.name} yet. Use the
-            composer above to publish the first notice.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-              <thead>
-                <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
-                  <th className="px-5 py-3">Announcement</th>
-                  <th className="px-4 py-3">Scope</th>
-                  <th className="px-4 py-3">Category / Priority</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-5 py-3 text-left">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-chmsu-border">
-                {announcements.map((item) => {
-                  const priorityMeta =
-                    ANNOUNCEMENT_PRIORITIES.find(
-                      (p) => p.value === item.priority
-                    ) ?? ANNOUNCEMENT_PRIORITIES[0];
-                  const isBusy = busyRowId === item.id;
-                  const editable = canEditRow(item);
-                  const deletable = canDeleteRow(item);
+                {myAnnouncements.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-slate-500">
+                    You have not published any announcements yet. Use the
+                    composer above to create your first notice.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-5 py-3">Announcement</th>
+                          <th className="px-4 py-3">Scope</th>
+                          <th className="px-4 py-3">Category / Priority</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-5 py-3 text-left">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-chmsu-border">
+                        {myAnnouncements.map((item) => {
+                          const priorityMeta =
+                            ANNOUNCEMENT_PRIORITIES.find(
+                              (p) => p.value === item.priority
+                            ) ?? ANNOUNCEMENT_PRIORITIES[0];
+                          const isBusy = busyRowId === item.id;
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className={`transition hover:bg-slate-50/70 ${
-                        !item.is_active ? "opacity-60" : ""
+                          return (
+                            <tr
+                              key={item.id}
+                              className={`transition hover:bg-slate-50/70 ${
+                                !item.is_active ? "opacity-60" : ""
+                              }`}
+                            >
+                              <td className="px-5 py-3.5 align-top">
+                                <div className="flex items-center gap-2">
+                                  {item.is_pinned && (
+                                    <Pin className="h-3.5 w-3.5 shrink-0 text-chmsu-flame" />
+                                  )}
+                                  <p className="font-semibold text-slate-900">
+                                    {item.title}
+                                  </p>
+                                </div>
+                                <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-600">
+                                  {item.body}
+                                </p>
+                              </td>
+
+                              <td className="px-4 py-3.5 align-top">
+                                {item.campus_id === null ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                                    <Globe className="h-3 w-3" />
+                                    University-Wide
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-green/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest">
+                                    <Building2 className="h-3 w-3" />
+                                    {campus.name}
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="px-4 py-3.5 align-top">
+                                <div className="flex flex-wrap gap-1.5">
+                                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold capitalize text-slate-700">
+                                    {item.category}
+                                  </span>
+                                  <span
+                                    className={`rounded-md border px-2 py-0.5 text-xs font-semibold capitalize ${priorityMeta.badgeClass}`}
+                                  >
+                                    {item.priority}
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="px-4 py-3.5 align-top">
+                                <div className="flex flex-wrap gap-1.5">
+                                  <span
+                                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                                      item.is_active
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-slate-200 text-slate-600"
+                                    }`}
+                                  >
+                                    {item.is_active ? "Active" : "Inactive"}
+                                  </span>
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                                    {item.is_public ? "Public" : "Internal"}
+                                  </span>
+                                </div>
+                              </td>
+
+                              <td className="px-5 py-3.5 text-left align-top">
+                                <div className="inline-flex items-center justify-start gap-1">
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => startEditing(item)}
+                                    title="Edit announcement"
+                                    className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green hover:text-chmsu-forest disabled:opacity-50"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => togglePin(item)}
+                                    title={item.is_pinned ? "Unpin" : "Pin"}
+                                    className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-gold hover:text-chmsu-flame disabled:opacity-50"
+                                  >
+                                    {item.is_pinned ? (
+                                      <PinOff className="h-4 w-4" />
+                                    ) : (
+                                      <Pin className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => toggleActive(item)}
+                                    title={
+                                      item.is_active
+                                        ? "Deactivate"
+                                        : "Reactivate"
+                                    }
+                                    className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-navy hover:text-chmsu-navy disabled:opacity-50"
+                                  >
+                                    {item.is_active ? (
+                                      <EyeOff className="h-4 w-4" />
+                                    ) : (
+                                      <Eye className="h-4 w-4" />
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => deleteAnnouncement(item)}
+                                    title="Delete announcement"
+                                    className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+
+          {/* TAB 2: READ-ONLY FULL-DETAIL CAMPUS ANNOUNCEMENTS FEED */}
+          {activeTab === "announcements" && (
+            <section className="space-y-4">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-chmsu-forest">
+                  Campus Announcements
+                </h1>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  Official updates for CHMSU {campus.name} and university-wide
+                  announcements.
+                </p>
+              </div>
+
+              {/* Search & Category Filters */}
+              <div className="space-y-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={newsQuery}
+                    onChange={(e) => setNewsQuery(e.target.value)}
+                    placeholder="Search announcements..."
+                    className="w-full rounded-xl border border-chmsu-border bg-white py-2.5 pl-10 pr-9 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                  />
+                  {newsQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setNewsQuery("")}
+                      aria-label="Clear announcement search"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {NEWS_CATEGORIES.map((cat) => (
+                    <button
+                      key={cat.value}
+                      type="button"
+                      onClick={() => setNewsCategory(cat.value)}
+                      className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${
+                        newsCategory === cat.value
+                          ? "bg-chmsu-forest text-white"
+                          : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green"
                       }`}
                     >
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-2">
-                          {item.is_pinned && (
-                            <Pin className="h-3.5 w-3.5 shrink-0 text-chmsu-flame" />
-                          )}
-                          <p className="font-semibold text-slate-900">
-                            {item.title}
-                          </p>
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Full-Detail Announcement Cards */}
+              {filteredFeedAnnouncements.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-chmsu-border bg-white p-8 text-center">
+                  <Newspaper className="mx-auto h-8 w-8 text-slate-400" />
+                  <p className="mt-2 text-sm font-semibold text-slate-700">
+                    No announcements match your filter
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Official updates for CHMSU {campus.name} and university-wide
+                    notices appear here in real time.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredFeedAnnouncements.map((item) => {
+                    const authorLabel = [
+                      item.author?.full_name,
+                      item.author?.office_location || item.author?.department,
+                    ]
+                      .filter(Boolean)
+                      .join(" • ");
+
+                    return (
+                      <article
+                        key={item.id}
+                        className={`rounded-2xl border bg-white p-4 sm:p-5 ${
+                          item.priority === "urgent" ||
+                          item.category === "emergency"
+                            ? "border-chmsu-flame/50 bg-orange-50/40"
+                            : item.is_pinned
+                              ? "border-chmsu-gold bg-amber-50/30"
+                              : "border-chmsu-border"
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-md bg-chmsu-navy px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">
+                              {item.category}
+                            </span>
+                            {item.campus_id === null ? (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-chmsu-green/15 px-2 py-0.5 text-[11px] font-semibold text-chmsu-forest">
+                                <Globe className="h-3 w-3" />
+                                University-Wide
+                              </span>
+                            ) : (
+                              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                                CHMSU {campus.name}
+                              </span>
+                            )}
+                            {item.is_pinned && (
+                              <span className="inline-flex items-center gap-1 rounded-md bg-chmsu-gold/40 px-2 py-0.5 text-[11px] font-semibold text-chmsu-forest">
+                                <Pin className="h-3 w-3" />
+                                Pinned
+                              </span>
+                            )}
+                            {item.priority === "urgent" && (
+                              <span className="rounded-md bg-chmsu-flame px-2 py-0.5 text-[11px] font-bold uppercase text-white">
+                                Urgent
+                              </span>
+                            )}
+                            {item.priority === "high" && (
+                              <span className="rounded-md bg-amber-100 px-2 py-0.5 text-[11px] font-bold uppercase text-amber-900">
+                                High Priority
+                              </span>
+                            )}
+                          </div>
+
+                          <span className="flex items-center gap-1 text-xs text-slate-500 tabular-nums">
+                            <Clock className="h-3.5 w-3.5" />
+                            {formatDateTime(item.published_at || item.created_at)}
+                          </span>
                         </div>
-                        <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">
+
+                        <h2 className="mt-2.5 text-base font-bold text-slate-900 sm:text-lg">
+                          {item.title}
+                        </h2>
+                        <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-slate-700">
                           {item.body}
                         </p>
-                      </td>
 
-                      <td className="px-4 py-3.5">
-                        {item.campus_id === null ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
-                            <Globe className="h-3 w-3" />
-                            University-Wide
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-green/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest">
-                            <Building2 className="h-3 w-3" />
-                            {campus.code}
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <div className="flex flex-wrap gap-1.5">
-                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-semibold capitalize text-slate-700">
-                            {item.category}
-                          </span>
-                          <span
-                            className={`rounded-md border px-2 py-0.5 text-xs font-semibold capitalize ${priorityMeta.badgeClass}`}
-                          >
-                            {item.priority}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <div className="flex flex-wrap gap-1.5">
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                              item.is_active
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-slate-200 text-slate-600"
-                            }`}
-                          >
-                            {item.is_active ? "Active" : "Inactive"}
-                          </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                            {item.is_public ? "Public" : "Internal"}
-                          </span>
-                        </div>
-                      </td>
-
-                      <td className="px-5 py-3.5 text-left">
-                        <div className="inline-flex items-center justify-start gap-1">
-                          {editable && (
-                            <>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => startEditing(item)}
-                                title="Edit announcement"
-                                className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green hover:text-chmsu-forest disabled:opacity-50"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => togglePin(item)}
-                                title={item.is_pinned ? "Unpin" : "Pin"}
-                                className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-gold hover:text-chmsu-flame disabled:opacity-50"
-                              >
-                                {item.is_pinned ? (
-                                  <PinOff className="h-4 w-4" />
-                                ) : (
-                                  <Pin className="h-4 w-4" />
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={isBusy}
-                                onClick={() => toggleActive(item)}
-                                title={
-                                  item.is_active ? "Deactivate" : "Reactivate"
-                                }
-                                className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-navy hover:text-chmsu-navy disabled:opacity-50"
-                              >
-                                {item.is_active ? (
-                                  <EyeOff className="h-4 w-4" />
-                                ) : (
-                                  <Eye className="h-4 w-4" />
-                                )}
-                              </button>
-                            </>
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                          {item.event_start_at && (
+                            <div className="inline-flex items-center gap-2 rounded-lg border border-chmsu-border bg-chmsu-canvas px-3 py-1.5 text-xs font-semibold text-chmsu-navy">
+                              <Calendar className="h-3.5 w-3.5 text-chmsu-green" />
+                              <span>
+                                {formatDateTime(item.event_start_at)}
+                                {item.event_end_at
+                                  ? ` – ${formatDateTime(item.event_end_at)}`
+                                  : ""}
+                              </span>
+                            </div>
                           )}
-                          {deletable && (
-                            <button
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => deleteAnnouncement(item)}
-                              title="Delete announcement"
-                              className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+
+                          {authorLabel && (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                              <User className="h-3.5 w-3.5 text-slate-400" />
+                              {authorLabel}
+                            </span>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

@@ -5,13 +5,19 @@ import {
   PORTAL_ROLE_ACCESS,
   getDefaultRouteForRole,
 } from "@/lib/constants";
-import PortalShell from "@/components/PortalShell";
 import FacultyPortalClient from "@/components/FacultyPortalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function FacultyPortalPage({ params }) {
+export default async function FacultyPortalPage({ params, searchParams }) {
   const { campus: campusSlug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const rawTab = resolvedSearchParams?.tab;
+  const initialTab =
+    rawTab === "queue" || rawTab === "announcements" || rawTab === "manage"
+      ? rawTab
+      : "manage";
+
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
@@ -56,23 +62,48 @@ export default async function FacultyPortalPage({ params }) {
     );
   }
 
-  const { data: announcements } = await supabase
-    .from("announcements")
-    .select(
-      "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at"
-    )
-    .or(`campus_id.eq.${campus.id},campus_id.is.null`)
-    .order("is_pinned", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const [announcementsRes, allCampusesRes, staffRes, documentsRes] =
+    await Promise.all([
+      supabase
+        .from("announcements")
+        .select(
+          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, author:author_id(full_name, department, office_location)"
+        )
+        .or(`campus_id.eq.${campus.id},campus_id.is.null`)
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabase
+        .from("campuses")
+        .select("id, code, slug, name, is_main")
+        .eq("is_active", true)
+        .order("is_main", { ascending: false })
+        .order("name", { ascending: true }),
+      supabase
+        .from("profiles")
+        .select("id, full_name, role, department, campus_id")
+        .eq("is_active", true)
+        .neq("role", "student")
+        .order("full_name", { ascending: true }),
+      supabase
+        .from("documents")
+        .select(
+          "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
+        )
+        .or(`current_campus_id.eq.${campus.id},current_holder_id.eq.${user.id}`)
+        .order("updated_at", { ascending: false })
+        .limit(120),
+    ]);
 
   return (
-    <PortalShell profile={profile} campus={campus}>
-      <FacultyPortalClient
-        profile={profile}
-        campus={campus}
-        initialAnnouncements={announcements ?? []}
-      />
-    </PortalShell>
+    <FacultyPortalClient
+      profile={profile}
+      campus={campus}
+      initialTab={initialTab}
+      initialAnnouncements={announcementsRes.data ?? []}
+      allCampuses={allCampusesRes.data ?? []}
+      staffDirectory={staffRes.data ?? []}
+      initialDocuments={documentsRes.data ?? []}
+    />
   );
 }

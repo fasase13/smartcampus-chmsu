@@ -73,14 +73,30 @@ export default function OfficeScannerClient({
   allCampuses,
   staffDirectory,
   initialDocuments,
+  controlledCameraActive,
+  onCameraActiveChange,
 }) {
   const campusMap = useMemo(
     () => Object.fromEntries(allCampuses.map((c) => [c.id, c])),
     [allCampuses]
   );
 
-  // Camera Scanner State
-  const [cameraActive, setCameraActive] = useState(false);
+  // Camera Scanner State (supports optional controlled mode for instant tab switching)
+  const [internalCameraActive, setInternalCameraActive] = useState(false);
+  const cameraActive =
+    controlledCameraActive !== undefined
+      ? controlledCameraActive
+      : internalCameraActive;
+  const setCameraActive = useCallback(
+    (updater) => {
+      if (onCameraActiveChange) {
+        onCameraActiveChange(updater);
+      } else {
+        setInternalCameraActive(updater);
+      }
+    },
+    [onCameraActiveChange]
+  );
   const [cameraError, setCameraError] = useState("");
   const lastScanRef = useRef({ value: "", timestamp: 0 });
 
@@ -187,7 +203,7 @@ export default function OfficeScannerClient({
     return () => {
       setCameraActive(false);
     };
-  }, []);
+  }, [setCameraActive]);
 
   const lookupDocument = useCallback(
     async (rawQuery, scannedViaQr = false) => {
@@ -244,7 +260,7 @@ export default function OfficeScannerClient({
         setLookingUp(false);
       }
     },
-    [campus.id, loadRoutes]
+    [campus.id, loadRoutes, setCameraActive]
   );
 
   function handleQrScan(detectedCodes) {
