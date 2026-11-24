@@ -12,11 +12,13 @@ import {
   Newspaper,
   Pin,
   Search,
+  UserCircle,
   Users,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
@@ -52,7 +54,9 @@ export default function StudentPortalClient({
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState(
-    initialTab === "instructors" ? "instructors" : "news"
+    initialTab === "instructors" || initialTab === "profile"
+      ? initialTab
+      : "news"
   );
   const [signingOut, setSigningOut] = useState(false);
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
@@ -214,6 +218,12 @@ export default function StudentPortalClient({
       desktopLabel: "Instructor Locator",
       icon: Users,
     },
+    {
+      id: "profile",
+      label: "My Profile",
+      desktopLabel: "My Profile",
+      icon: UserCircle,
+    },
   ];
 
   const sidebarNavItems = tabs.map((tab) => ({
@@ -258,15 +268,22 @@ export default function StudentPortalClient({
               <SidebarToggleButton onClick={toggleSidebar} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-chmsu-forest sm:text-base">
-                  {profile.full_name}
+                  CHMSU {campus.name}
                 </p>
                 <p className="truncate text-xs font-medium text-slate-500">
-                  CHMSU {campus.name} &bull; Student Portal
+                  Student Portal
                 </p>
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 lg:hidden">
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-semibold text-slate-900">
+                {profile.full_name}
+              </p>
+              <p className="text-xs text-slate-500">Student</p>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2 sm:hidden">
               <button
                 type="button"
                 onClick={handleSignOut}
@@ -547,6 +564,11 @@ export default function StudentPortalClient({
               )}
             </section>
           )}
+
+          {/* TAB 3: MY PROFILE */}
+          {activeTab === "profile" && (
+            <UserProfileView profile={profile} campus={campus} />
+          )}
         </main>
       </div>
 
@@ -555,7 +577,7 @@ export default function StudentPortalClient({
         aria-label="Mobile Navigation"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-chmsu-border bg-white/95 backdrop-blur lg:hidden"
       >
-        <div className="grid grid-cols-2">
+        <div className="grid grid-cols-3">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;

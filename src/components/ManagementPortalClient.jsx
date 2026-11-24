@@ -29,6 +29,7 @@ import {
   Search,
   ShieldAlert,
   UserCheck,
+  UserCircle,
   Users,
   X,
   XCircle,
@@ -36,6 +37,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
@@ -47,6 +49,7 @@ import {
   ROLES,
   ROUTE_ACTION_LABELS,
   STORAGE_BUCKETS,
+  formatSlaDays,
 } from "@/lib/constants";
 
 function formatDateTime(isoString) {
@@ -67,10 +70,10 @@ function isDocOverdue(doc) {
   return Boolean(doc.due_at && new Date(doc.due_at) < new Date());
 }
 
-function getOverdueHours(doc) {
+function getOverdueDays(doc) {
   if (!doc?.due_at) return 0;
   const diffMs = Date.now() - new Date(doc.due_at).getTime();
-  return diffMs > 0 ? Math.round((diffMs / 3600000) * 10) / 10 : 0;
+  return diffMs > 0 ? Math.max(0.1, Math.round((diffMs / 86400000) * 10) / 10) : 0;
 }
 
 function escapeCsvCell(value) {
@@ -375,11 +378,11 @@ export default function ManagementPortalClient({
         ? 0
         : Math.round(
             (completedWithTime.reduce((acc, d) => {
-              const hrs =
+              const days =
                 (new Date(d.completed_at).getTime() -
                   new Date(d.created_at).getTime()) /
-                3600000;
-              return acc + Math.max(0, hrs);
+                86400000;
+              return acc + Math.max(0, days);
             }, 0) /
               completedWithTime.length) *
               10
@@ -438,7 +441,7 @@ export default function ManagementPortalClient({
         total: 0,
         active: 0,
         overdue: 0,
-        holdingHoursSum: 0,
+        holdingDaysSum: 0,
       };
       existing.total += 1;
       if (doc.status !== "completed" && doc.status !== "archived") {
@@ -448,9 +451,9 @@ export default function ManagementPortalClient({
       const endMs = doc.completed_at
         ? new Date(doc.completed_at).getTime()
         : nowMs || new Date(doc.updated_at || doc.created_at).getTime();
-      existing.holdingHoursSum += Math.max(
+      existing.holdingDaysSum += Math.max(
         0,
-        (endMs - new Date(doc.created_at).getTime()) / 3600000
+        (endMs - new Date(doc.created_at).getTime()) / 86400000
       );
       map.set(key, existing);
     });
@@ -458,14 +461,14 @@ export default function ManagementPortalClient({
     return Array.from(map.values())
       .map((item) => ({
         ...item,
-        avgHoldingHours:
+        avgHoldingDays:
           item.total === 0
             ? 0
-            : Math.round((item.holdingHoursSum / item.total) * 10) / 10,
+            : Math.round((item.holdingDaysSum / item.total) * 10) / 10,
       }))
       .sort(
         (a, b) =>
-          b.overdue - a.overdue || b.avgHoldingHours - a.avgHoldingHours
+          b.overdue - a.overdue || b.avgHoldingDays - a.avgHoldingDays
       )
       .slice(0, 8);
   }, [campusMap, reportScopedDocs, nowMs]);
@@ -547,7 +550,7 @@ export default function ManagementPortalClient({
       "Origin Campus",
       "Current Campus",
       "Current Office",
-      "SLA Hours",
+      "SLA Days",
       "Due At",
       "Is Overdue",
       "Created At",
@@ -562,7 +565,7 @@ export default function ManagementPortalClient({
       campusMap[d.origin_campus_id]?.name ?? "",
       campusMap[d.current_campus_id]?.name ?? "",
       d.current_office,
-      d.sla_hours,
+      d.sla_hours ? Math.round((d.sla_hours / 24) * 10) / 10 : "",
       d.due_at ?? "",
       isDocOverdue(d) ? "YES" : "NO",
       d.created_at,
@@ -923,6 +926,12 @@ export default function ManagementPortalClient({
       icon: Activity,
       visible: true,
     },
+    {
+      id: "profile",
+      label: "My Profile",
+      icon: UserCircle,
+      visible: true,
+    },
   ].filter((t) => t.visible);
 
   return (
@@ -1005,6 +1014,17 @@ export default function ManagementPortalClient({
                 )}
                 Run SLA Delay Check
               </button>
+
+              <div className="hidden text-right sm:block">
+                <p className="text-sm font-semibold text-slate-900">
+                  {profile?.full_name}
+                </p>
+                <p className="text-xs text-slate-500">
+                  {profile?.role === ROLES.SUPERADMIN
+                    ? "System Admin"
+                    : ROLE_LABELS[profile?.role] ?? profile?.role}
+                </p>
+              </div>
 
               <button
                 type="button"
@@ -1149,7 +1169,7 @@ export default function ManagementPortalClient({
                     Avg. Turnaround
                   </p>
                   <p className="mt-2 text-3xl font-bold text-chmsu-navy tabular-nums">
-                    {kpis.avgTurnaround}h
+                    {formatSlaDays(kpis.avgTurnaround)}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
                     Completed documents
@@ -1203,7 +1223,7 @@ export default function ManagementPortalClient({
                 ) : (
                   <div className="divide-y divide-red-100">
                     {overdueDocuments.map((doc) => {
-                      const overdueHrs = getOverdueHours(doc);
+                      const overdueDays = getOverdueDays(doc);
                       return (
                         <div
                           key={doc.id}
@@ -1215,7 +1235,7 @@ export default function ManagementPortalClient({
                                 {doc.tracking_code}
                               </span>
                               <span className="rounded-full bg-[#DC2626] px-2.5 py-0.5 text-[11px] font-bold text-white tabular-nums">
-                                +{overdueHrs}h overdue
+                                Overdue by {formatSlaDays(overdueDays)}
                               </span>
                               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold capitalize text-slate-700">
                                 {doc.priority}
@@ -1443,7 +1463,7 @@ export default function ManagementPortalClient({
                               </span>
                             </td>
                             <td className="px-5 py-3 text-right font-semibold tabular-nums text-chmsu-navy">
-                              {b.avgHoldingHours}h
+                              {formatSlaDays(b.avgHoldingDays)}
                             </td>
                           </tr>
                         ))}
@@ -1993,6 +2013,9 @@ export default function ManagementPortalClient({
               </div>
             </div>
           )}
+
+          {/* MY PROFILE */}
+          {activeTab === "profile" && <UserProfileView profile={profile} />}
         </main>
       </div>
 

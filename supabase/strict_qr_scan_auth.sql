@@ -134,6 +134,13 @@ BEGIN
            NULLIF(btrim(COALESCE(v_user.department, '')), '') IS NOT NULL
            AND lower(btrim(v_doc.current_office)) = lower(btrim(v_user.department))
          )
+         OR (
+           NULLIF(btrim(COALESCE(v_user.department, '')), '') IS NOT NULL
+           AND NULLIF(btrim(COALESCE(v_user.office_location, '')), '') IS NOT NULL
+           AND lower(btrim(v_doc.current_office)) = lower(
+             btrim(v_user.department) || ' — ' || btrim(v_user.office_location)
+           )
+         )
        ) THEN
       RETURN true;
     END IF;

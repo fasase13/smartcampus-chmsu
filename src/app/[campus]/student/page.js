@@ -12,8 +12,9 @@ export const dynamic = "force-dynamic";
 export default async function StudentPortalPage({ params, searchParams }) {
   const { campus: campusSlug } = await params;
   const resolvedSearchParams = await searchParams;
+  const rawTab = resolvedSearchParams?.tab;
   const initialTab =
-    resolvedSearchParams?.tab === "instructors" ? "instructors" : "news";
+    rawTab === "instructors" || rawTab === "profile" ? rawTab : "news";
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {

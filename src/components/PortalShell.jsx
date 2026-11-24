@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   FilePlus2,
-  Home,
   Megaphone,
   QrCode,
   ShieldCheck,
   UserCheck,
+  UserCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLE_LABELS, ROLES } from "@/lib/constants";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
@@ -23,6 +23,7 @@ export default function PortalShell({ profile, campus, children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [signingOut, setSigningOut] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
     usePortalSidebarState();
 
@@ -89,17 +90,30 @@ export default function PortalShell({ profile, campus, children }) {
       ].includes(profile?.role),
     },
     {
-      href: "/",
-      label: "Campus Gateway",
-      icon: Home,
+      id: "profile",
+      label: "My Profile",
+      icon: UserCircle,
       visible: true,
     },
   ]
     .filter((item) => item.visible)
-    .map((item) => ({
-      ...item,
-      isActive: pathname === item.href,
-    }));
+    .map((item) => {
+      if (item.id === "profile") {
+        return { ...item, isActive: showProfile };
+      }
+      if (item.href === pathname) {
+        return {
+          id: "current-route",
+          label: item.label,
+          icon: item.icon,
+          isActive: !showProfile,
+        };
+      }
+      return {
+        ...item,
+        isActive: false,
+      };
+    });
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -121,6 +135,11 @@ export default function PortalShell({ profile, campus, children }) {
         title="SmartCampus CHMSU"
         subtitle={`CHMSU ${campusName}`}
         navItems={navItems}
+        activeId={showProfile ? "profile" : undefined}
+        onSelect={(id) => {
+          if (id === "profile") setShowProfile(true);
+          else if (id === "current-route") setShowProfile(false);
+        }}
         profile={profile}
         roleBadge={roleLabel}
         roleIcon={UserCheck}
@@ -144,18 +163,9 @@ export default function PortalShell({ profile, campus, children }) {
             <SidebarToggleButton onClick={toggleSidebar} />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <nav
-                  aria-label="Breadcrumb"
-                  className="flex items-center gap-1.5 text-xs font-medium text-slate-500"
-                >
-                  <Link href="/" className="hover:text-chmsu-forest">
-                    Gateway
-                  </Link>
-                  <span>/</span>
-                  <span className="truncate font-semibold text-chmsu-forest">
-                    CHMSU {campusName}
-                  </span>
-                </nav>
+                <span className="truncate text-sm font-bold text-chmsu-forest">
+                  CHMSU {campusName}
+                </span>
                 <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                   {roleLabel}
                 </span>
@@ -167,14 +177,18 @@ export default function PortalShell({ profile, campus, children }) {
             <p className="text-sm font-semibold text-slate-900">
               {profile?.full_name}
             </p>
-            <p className="text-xs text-slate-500">
-              {profile?.department || profile?.email}
-            </p>
+            <p className="text-xs text-slate-500">{roleLabel}</p>
           </div>
         </header>
 
         {/* Page Body */}
-        <main className="w-full flex-1 px-4 py-5 sm:px-6">{children}</main>
+        <main className="w-full flex-1 px-4 py-5 sm:px-6">
+          {showProfile ? (
+            <UserProfileView profile={profile} campus={campus} />
+          ) : (
+            children
+          )}
+        </main>
       </div>
     </div>
   );

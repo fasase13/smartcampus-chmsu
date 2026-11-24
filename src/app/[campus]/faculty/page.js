@@ -14,7 +14,10 @@ export default async function FacultyPortalPage({ params, searchParams }) {
   const resolvedSearchParams = await searchParams;
   const rawTab = resolvedSearchParams?.tab;
   const initialTab =
-    rawTab === "queue" || rawTab === "announcements" || rawTab === "manage"
+    rawTab === "queue" ||
+    rawTab === "announcements" ||
+    rawTab === "manage" ||
+    rawTab === "profile"
       ? rawTab
       : "manage";
 
@@ -81,7 +84,7 @@ export default async function FacultyPortalPage({ params, searchParams }) {
         .order("name", { ascending: true }),
       supabase
         .from("profiles")
-        .select("id, full_name, role, department, campus_id")
+        .select("id, full_name, role, department, office_location, campus_id")
         .eq("is_active", true)
         .neq("role", "student")
         .order("full_name", { ascending: true }),

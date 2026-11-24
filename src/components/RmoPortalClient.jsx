@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   AlertTriangle,
@@ -11,11 +12,14 @@ import {
   FilePlus2,
   FileText,
   Loader2,
+  Megaphone,
   Paperclip,
   QrCode,
   RefreshCw,
   Search,
   Upload,
+  UserCheck,
+  UserCircle,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -25,10 +29,24 @@ import {
   DOCUMENT_STATUS_META,
   DOCUMENT_TYPES,
   MAX_DOCUMENT_FILE_BYTES,
+  ROLE_LABELS,
   ROUTE_ACTION_LABELS,
   SLA_PRESETS,
   STORAGE_BUCKETS,
 } from "@/lib/constants";
+import {
+  getAllDestinationOfficesForCampus,
+  getDestinationOfficesForCampus,
+  matchesDestinationOffice,
+} from "@/lib/chmsuDirectory";
+import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import PortalSidebar, {
+  SidebarToggleButton,
+  usePortalSidebarState,
+} from "@/components/PortalSidebar";
+import OfficeScannerClient from "@/components/OfficeScannerClient";
+import AnnouncementsAvailabilityPanel from "@/components/AnnouncementsAvailabilityPanel";
+import UserProfileView from "@/components/UserProfileView";
 import QrSlipModal from "@/components/QrSlipModal";
 
 function generateTrackingCode(campusCode) {
@@ -62,14 +80,61 @@ function isDocOverdue(doc) {
 export default function RmoPortalClient({
   profile,
   campus,
+  initialTab = "intake",
   allCampuses,
   staffDirectory,
   initialDocuments,
+  initialAnnouncements = [],
 }) {
+  const router = useRouter();
+  const roleLabel = ROLE_LABELS[profile?.role] ?? profile?.role ?? "RMO";
+
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [scannerCameraActive, setScannerCameraActive] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
+    usePortalSidebarState();
+
+  function handleSelectTab(nextTab) {
+    if (nextTab !== "queue") {
+      setScannerCameraActive(false);
+    }
+    setActiveTab(nextTab);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", nextTab);
+      window.history.replaceState(null, "", url.toString());
+    }
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+      router.push("/");
+      router.refresh();
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
   const campusMap = useMemo(
     () => Object.fromEntries(allCampuses.map((c) => [c.id, c])),
     [allCampuses]
   );
+
+  // Strictly locked Sender Name & Sender Office derived from authenticated profile
+  const lockedSenderName =
+    String(profile?.full_name ?? "").trim() ||
+    String(profile?.email ?? "").trim() ||
+    "Records Management Officer";
+  const lockedSenderOffice =
+    String(
+      profile?.office_location ||
+        profile?.department ||
+        "Records Management Office"
+    ).trim();
 
   // Registration Form State
   const [trackingCode, setTrackingCode] = useState(() =>
@@ -79,12 +144,10 @@ export default function RmoPortalClient({
   const [description, setDescription] = useState("");
   const [documentType, setDocumentType] = useState(DOCUMENT_TYPES[0]);
   const [priority, setPriority] = useState("routine");
-  const [senderName, setSenderName] = useState("");
-  const [senderOffice, setSenderOffice] = useState("");
   const [destinationCampusId, setDestinationCampusId] = useState(campus.id);
   const [destinationOffice, setDestinationOffice] = useState("");
   const [recipientId, setRecipientId] = useState("");
-  const [slaHours, setSlaHours] = useState(48);
+  const [slaDays, setSlaDays] = useState(2);
   const [attachedFile, setAttachedFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -118,19 +181,38 @@ export default function RmoPortalClient({
 
   const computedDueAt = useMemo(() => {
     if (!nowMs) return null;
-    const hours = Number(slaHours) || 48;
-    return new Date(nowMs + hours * 3600 * 1000);
-  }, [slaHours, nowMs]);
+    const days = Math.min(90, Math.max(1, Number(slaDays) || 2));
+    return new Date(nowMs + days * 24 * 3600 * 1000);
+  }, [slaDays, nowMs]);
 
-  // Filter recipient dropdown to destination campus staff (plus cross-campus)
+  // Cascading Destination Office options filtered by selected Destination Campus
+  const destinationCampusSlug =
+    campusMap[destinationCampusId]?.slug ?? campus.slug;
+
+  const destinationOfficeGroups = useMemo(
+    () => getDestinationOfficesForCampus(destinationCampusSlug),
+    [destinationCampusSlug]
+  );
+
+  const validDestinationOffices = useMemo(
+    () => new Set(getAllDestinationOfficesForCampus(destinationCampusSlug)),
+    [destinationCampusSlug]
+  );
+
+  // Filter recipient dropdown to active non-student staff matching BOTH
+  // selected Destination Campus AND selected Destination Office,
+  // strictly excluding the currently signed-in sender (recipient.id !== profile.id)
   const destinationStaff = useMemo(() => {
+    if (!destinationOffice.trim()) return [];
     return staffDirectory.filter(
       (s) =>
-        s.campus_id === destinationCampusId ||
-        s.role === "superadmin" ||
-        s.role === "management"
+        s.id !== profile.id &&
+        (s.campus_id === destinationCampusId ||
+          s.role === "superadmin" ||
+          s.role === "management") &&
+        matchesDestinationOffice(s, destinationOffice)
     );
-  }, [staffDirectory, destinationCampusId]);
+  }, [staffDirectory, destinationCampusId, destinationOffice, profile.id]);
 
   const refreshDocuments = useCallback(async () => {
     const supabase = createClient();
@@ -219,16 +301,35 @@ export default function RmoPortalClient({
 
   async function handleRegisterDocument(e) {
     e.preventDefault();
-    setSubmitting(true);
     setFeedback(null);
+
+    const cleanDestOffice = destinationOffice.trim();
+    if (!cleanDestOffice || !validDestinationOffices.has(cleanDestOffice)) {
+      setFeedback({
+        type: "error",
+        message: "Please select a valid Destination Office for the selected campus.",
+      });
+      return;
+    }
+
+    if (recipientId && recipientId === profile.id) {
+      setFeedback({
+        type: "error",
+        message: "You cannot assign yourself as the document recipient.",
+      });
+      return;
+    }
+
+    setSubmitting(true);
 
     try {
       const supabase = createClient();
-      const hours = Math.min(720, Math.max(1, Number(slaHours) || 48));
-      const dueAtIso = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+      const days = Math.min(90, Math.max(1, Math.round(Number(slaDays) || 2)));
+      const hoursForDb = Math.min(720, Math.max(24, days * 24));
+      const dueAtIso = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
       const isInterCampus = destinationCampusId !== campus.id;
 
-      // 1. Insert document row (Postgres generates id & opaque qr_token)
+      // 1. Insert document row (sender_name & sender_office strictly from authenticated profile)
       const { data: createdDoc, error: insertError } = await supabase
         .from("documents")
         .insert({
@@ -240,12 +341,12 @@ export default function RmoPortalClient({
           document_type: documentType,
           priority,
           status: isInterCampus ? "in_transit" : "registered",
-          sender_name: senderName.trim(),
-          sender_office: senderOffice.trim() || null,
-          current_office: destinationOffice.trim(),
+          sender_name: lockedSenderName,
+          sender_office: lockedSenderOffice,
+          current_office: cleanDestOffice,
           current_holder_id: recipientId || null,
           created_by: profile.id,
-          sla_hours: hours,
+          sla_hours: hoursForDb,
           due_at: dueAtIso,
         })
         .select("*")
@@ -301,8 +402,8 @@ export default function RmoPortalClient({
       await supabase.from("document_routes").insert({
         document_id: finalDoc.id,
         campus_id: campus.id,
-        from_office: senderOffice.trim() || "RMO Intake Window",
-        to_office: destinationOffice.trim(),
+        from_office: lockedSenderOffice,
+        to_office: cleanDestOffice,
         from_user_id: profile.id,
         to_user_id: recipientId || null,
         acted_by: profile.id,
@@ -347,16 +448,14 @@ export default function RmoPortalClient({
       await refreshDocuments();
       setQrSlipDoc(finalDoc);
 
-      // Reset form for next intake
+      // Reset form for next intake (Sender Name & Sender Office remain auto-filled from profile)
       setTrackingCode(generateTrackingCode(campus.code));
       setTitle("");
       setDescription("");
-      setSenderName("");
-      setSenderOffice("");
       setDestinationCampusId(campus.id);
       setDestinationOffice("");
       setRecipientId("");
-      setSlaHours(48);
+      setSlaDays(2);
       setAttachedFile(null);
 
       setFeedback({
@@ -436,20 +535,124 @@ export default function RmoPortalClient({
     [documents]
   );
 
+  const navItems = [
+    {
+      id: "intake",
+      label: "RMO Intake & Registry",
+      icon: FilePlus2,
+    },
+    {
+      id: "queue",
+      label: "QR Scanner & Office Queue",
+      icon: QrCode,
+    },
+    {
+      id: "announcements",
+      label: "Announcements & Availability",
+      icon: Megaphone,
+    },
+    {
+      id: "profile",
+      label: "My Profile",
+      icon: UserCircle,
+    },
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="no-print flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-chmsu-forest">
-            RMO Document Intake &amp; Registry
-          </h1>
-          <p className="mt-0.5 text-sm text-slate-600">
-            Register official documents, attach files securely, generate
-            printable QR slips, and monitor intra- and inter-campus routing for
-            CHMSU {campus.name}.
-          </p>
-        </div>
+    <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
+      <PrivacyTermsGate profile={profile} />
+
+      <PortalSidebar
+        title="SmartCampus CHMSU"
+        subtitle={`CHMSU ${campus.name}`}
+        navItems={navItems}
+        activeId={activeTab}
+        onSelect={handleSelectTab}
+        profile={profile}
+        roleBadge={roleLabel}
+        roleIcon={UserCheck}
+        onSignOut={handleSignOut}
+        signingOut={signingOut}
+        collapsed={collapsed}
+        onToggleCollapse={toggleSidebar}
+        mobileOpen={mobileOpen}
+        onCloseMobile={closeMobile}
+        ariaLabel="RMO Portal Navigation"
+      />
+
+      {/* Main Column */}
+      <div
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${
+          collapsed ? "lg:pl-20" : "lg:pl-64"
+        }`}
+      >
+        {/* Sticky Top Header Bar */}
+        <header className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-3">
+            <SidebarToggleButton onClick={toggleSidebar} />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="truncate text-sm font-bold text-chmsu-forest">
+                  CHMSU {campus.name}
+                </span>
+                <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
+                  {roleLabel}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="hidden text-right sm:block">
+            <p className="text-sm font-semibold text-slate-900">
+              {profile?.full_name}
+            </p>
+            <p className="text-xs text-slate-500">{roleLabel}</p>
+          </div>
+        </header>
+
+        {/* Page Body */}
+        <main className="w-full flex-1 px-4 py-5 sm:px-6">
+          {/* TAB 2: QR SCANNER & OFFICE QUEUE (Mounted across tabs so queue stays cached; camera stops on switch) */}
+          <div className={activeTab === "queue" ? "" : "hidden"}>
+            <OfficeScannerClient
+              profile={profile}
+              campus={campus}
+              allCampuses={allCampuses}
+              staffDirectory={staffDirectory}
+              initialDocuments={initialDocuments}
+              controlledCameraActive={scannerCameraActive}
+              onCameraActiveChange={setScannerCameraActive}
+            />
+          </div>
+
+          {/* TAB 3: ANNOUNCEMENTS & AVAILABILITY (Stays strictly inside /[campus]/rmo) */}
+          {activeTab === "announcements" && (
+            <AnnouncementsAvailabilityPanel
+              profile={profile}
+              campus={campus}
+              initialAnnouncements={initialAnnouncements}
+            />
+          )}
+
+          {/* TAB 4: MY PROFILE */}
+          {activeTab === "profile" && (
+            <UserProfileView profile={profile} campus={campus} />
+          )}
+
+          {/* TAB 1: RMO INTAKE & REGISTRY */}
+          <div className={activeTab === "intake" ? "space-y-6" : "hidden"}>
+            {/* Header */}
+            <div className="no-print flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight text-chmsu-forest">
+                  RMO Document Intake &amp; Registry
+                </h1>
+                <p className="mt-0.5 text-sm text-slate-600">
+                  Register official documents, attach files securely, generate
+                  printable QR slips, and monitor intra- and inter-campus
+                  routing for CHMSU {campus.name}.
+                </p>
+              </div>
 
         {overdueCount > 0 && (
           <div className="flex items-center gap-2">
@@ -620,7 +823,7 @@ export default function RmoPortalClient({
             </div>
           </div>
 
-          {/* Row 3: Sender & Destination Campus / Office */}
+          {/* Row 3: Locked Sender Info + Cascading Destination Campus / Office */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
             <div>
               <label
@@ -633,10 +836,9 @@ export default function RmoPortalClient({
                 id="rmo_sender_name"
                 type="text"
                 required
-                value={senderName}
-                onChange={(e) => setSenderName(e.target.value)}
-                placeholder="e.g., Dr. Elena Cruz"
-                className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
+                readOnly
+                value={lockedSenderName}
+                className="mt-1 w-full cursor-not-allowed rounded-xl border border-chmsu-border bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 outline-none"
               />
             </div>
 
@@ -645,15 +847,15 @@ export default function RmoPortalClient({
                 htmlFor="rmo_sender_office"
                 className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
               >
-                Sender Office
+                Sender Office *
               </label>
               <input
                 id="rmo_sender_office"
                 type="text"
-                value={senderOffice}
-                onChange={(e) => setSenderOffice(e.target.value)}
-                placeholder="e.g., Alijis Campus Dean Office"
-                className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
+                required
+                readOnly
+                value={lockedSenderOffice}
+                className="mt-1 w-full cursor-not-allowed rounded-xl border border-chmsu-border bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 outline-none"
               />
             </div>
 
@@ -669,13 +871,15 @@ export default function RmoPortalClient({
                 value={destinationCampusId}
                 onChange={(e) => {
                   setDestinationCampusId(e.target.value);
+                  setDestinationOffice("");
                   setRecipientId("");
                 }}
                 className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
               >
                 {allCampuses.map((c) => (
                   <option key={c.id} value={c.id}>
-                    CHMSU {c.name} {c.id === campus.id ? "(This Campus)" : "(Inter-Campus)"}
+                    CHMSU {c.name}{" "}
+                    {c.id === campus.id ? "(This Campus)" : "(Inter-Campus)"}
                   </option>
                 ))}
               </select>
@@ -688,15 +892,27 @@ export default function RmoPortalClient({
               >
                 Destination Office *
               </label>
-              <input
+              <select
                 id="rmo_dest_office"
-                type="text"
                 required
                 value={destinationOffice}
-                onChange={(e) => setDestinationOffice(e.target.value)}
-                placeholder="e.g., Office of the VPAA"
+                onChange={(e) => {
+                  setDestinationOffice(e.target.value);
+                  setRecipientId("");
+                }}
                 className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green"
-              />
+              >
+                <option value="">Select destination office...</option>
+                {destinationOfficeGroups.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.options.map((office) => (
+                      <option key={office} value={office}>
+                        {office}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -718,10 +934,15 @@ export default function RmoPortalClient({
                 <option value="">Unassigned (Office Queue)</option>
                 {destinationStaff.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.full_name} ({s.role.replace("_", " ")})
+                    {s.full_name} ({ROLE_LABELS[s.role] ?? s.role.replace("_", " ")})
                   </option>
                 ))}
               </select>
+              {!destinationOffice && (
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Select a destination office to see eligible recipients.
+                </p>
+              )}
             </div>
 
             <div>
@@ -729,17 +950,17 @@ export default function RmoPortalClient({
                 htmlFor="rmo_sla"
                 className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
               >
-                SLA Target (Hours) &mdash; Due{" "}
+                SLA Target (Days) &mdash; Due{" "}
                 {computedDueAt ? formatDateTime(computedDueAt.toISOString()) : "—"}
               </label>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {SLA_PRESETS.map((preset) => (
                   <button
-                    key={preset.hours}
+                    key={preset.days}
                     type="button"
-                    onClick={() => setSlaHours(preset.hours)}
+                    onClick={() => setSlaDays(preset.days)}
                     className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${
-                      Number(slaHours) === preset.hours
+                      Number(slaDays) === preset.days
                         ? "bg-chmsu-navy text-white"
                         : "border border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-navy"
                     }`}
@@ -751,9 +972,10 @@ export default function RmoPortalClient({
                   id="rmo_sla"
                   type="number"
                   min={1}
-                  max={720}
-                  value={slaHours}
-                  onChange={(e) => setSlaHours(e.target.value)}
+                  max={90}
+                  step={1}
+                  value={slaDays}
+                  onChange={(e) => setSlaDays(e.target.value)}
                   className="w-20 rounded-lg border border-chmsu-border bg-white px-2.5 py-1.5 text-xs font-semibold tabular-nums text-slate-900 outline-none focus:border-chmsu-green"
                 />
               </div>
@@ -1146,6 +1368,9 @@ export default function RmoPortalClient({
           </div>
         </div>
       )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

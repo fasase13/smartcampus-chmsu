@@ -26,12 +26,14 @@ import {
   ShieldAlert,
   Trash2,
   UserCheck,
+  UserCircle,
   Users,
   Wrench,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
+import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
@@ -45,6 +47,7 @@ import {
   ROLES,
   ROUTE_ACTION_LABELS,
   STORAGE_BUCKETS,
+  formatSlaDays,
   getCampusAdminTitle,
 } from "@/lib/constants";
 
@@ -341,11 +344,11 @@ export default function SuperadminPortalClient({
         ? 0
         : Math.round(
             (completed.reduce((acc, d) => {
-              const hrs =
+              const days =
                 (new Date(d.completed_at).getTime() -
                   new Date(d.created_at).getTime()) /
-                3600000;
-              return acc + Math.max(0, hrs);
+                86400000;
+              return acc + Math.max(0, days);
             }, 0) /
               completed.length) *
               10
@@ -803,6 +806,7 @@ export default function SuperadminPortalClient({
       alertDot: settings?.maintenance_mode,
     },
     { id: "audit", label: "Audit Logs", icon: Activity },
+    { id: "profile", label: "My Profile", icon: UserCircle },
   ];
 
   return (
@@ -845,12 +849,20 @@ export default function SuperadminPortalClient({
               </div>
             </div>
 
-            {settings?.maintenance_mode && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-800">
-                <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
-                Maintenance Mode Active
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {settings?.maintenance_mode && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-800">
+                  <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+                  Maintenance Mode Active
+                </span>
+              )}
+              <div className="hidden text-right sm:block">
+                <p className="text-sm font-semibold text-slate-900">
+                  {profile?.full_name}
+                </p>
+                <p className="text-xs text-slate-500">System Admin</p>
+              </div>
+            </div>
           </div>
         </header>
 
@@ -1024,7 +1036,7 @@ export default function SuperadminPortalClient({
                   },
                   {
                     label: "Avg Turnaround",
-                    value: `${analyticsKpis.avgTurnaround}h`,
+                    value: formatSlaDays(analyticsKpis.avgTurnaround),
                   },
                   {
                     label: "Inter-Campus",
@@ -2043,6 +2055,9 @@ export default function SuperadminPortalClient({
               </div>
             </div>
           )}
+
+          {/* TAB 9: MY PROFILE */}
+          {activeTab === "profile" && <UserProfileView profile={profile} />}
         </main>
       </div>
 

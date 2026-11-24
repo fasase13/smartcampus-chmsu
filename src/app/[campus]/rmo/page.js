@@ -5,13 +5,22 @@ import {
   PORTAL_ROLE_ACCESS,
   getDefaultRouteForRole,
 } from "@/lib/constants";
-import PortalShell from "@/components/PortalShell";
 import RmoPortalClient from "@/components/RmoPortalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function RmoPortalPage({ params }) {
+export default async function RmoPortalPage({ params, searchParams }) {
   const { campus: campusSlug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const rawTab = resolvedSearchParams?.tab;
+  const initialTab =
+    rawTab === "intake" ||
+    rawTab === "queue" ||
+    rawTab === "announcements" ||
+    rawTab === "profile"
+      ? rawTab
+      : "intake";
+
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
@@ -54,37 +63,47 @@ export default async function RmoPortalPage({ params }) {
     );
   }
 
-  const [allCampusesRes, staffRes, documentsRes] = await Promise.all([
-    supabase
-      .from("campuses")
-      .select("id, code, slug, name, is_main")
-      .eq("is_active", true)
-      .order("is_main", { ascending: false })
-      .order("name", { ascending: true }),
-    supabase
-      .from("profiles")
-      .select("id, full_name, role, department, campus_id")
-      .eq("is_active", true)
-      .neq("role", "student")
-      .order("full_name", { ascending: true }),
-    supabase
-      .from("documents")
-      .select(
-        "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
-      )
-      .order("created_at", { ascending: false })
-      .limit(150),
-  ]);
+  const [allCampusesRes, staffRes, documentsRes, announcementsRes] =
+    await Promise.all([
+      supabase
+        .from("campuses")
+        .select("id, code, slug, name, is_main")
+        .eq("is_active", true)
+        .order("is_main", { ascending: false })
+        .order("name", { ascending: true }),
+      supabase
+        .from("profiles")
+        .select("id, full_name, role, department, office_location, campus_id")
+        .eq("is_active", true)
+        .neq("role", "student")
+        .order("full_name", { ascending: true }),
+      supabase
+        .from("documents")
+        .select(
+          "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
+        )
+        .order("created_at", { ascending: false })
+        .limit(150),
+      supabase
+        .from("announcements")
+        .select(
+          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at"
+        )
+        .or(`campus_id.eq.${campus.id},campus_id.is.null`)
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(100),
+    ]);
 
   return (
-    <PortalShell profile={profile} campus={campus}>
-      <RmoPortalClient
-        profile={profile}
-        campus={campus}
-        allCampuses={allCampusesRes.data ?? []}
-        staffDirectory={staffRes.data ?? []}
-        initialDocuments={documentsRes.data ?? []}
-      />
-    </PortalShell>
+    <RmoPortalClient
+      profile={profile}
+      campus={campus}
+      initialTab={initialTab}
+      allCampuses={allCampusesRes.data ?? []}
+      staffDirectory={staffRes.data ?? []}
+      initialDocuments={documentsRes.data ?? []}
+      initialAnnouncements={announcementsRes.data ?? []}
+    />
   );
 }

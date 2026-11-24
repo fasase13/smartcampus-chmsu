@@ -17,11 +17,13 @@ import {
   Search,
   Trash2,
   UserCheck,
+  UserCircle,
   Users,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
+import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
@@ -408,6 +410,7 @@ export default function CampusAdminPortalClient({
       icon: FileText,
       alertCount: overdueDocs.length,
     },
+    { id: "profile", label: "My Profile", icon: UserCircle },
   ];
 
   return (
@@ -447,6 +450,13 @@ export default function CampusAdminPortalClient({
                   CHMSU {campus.name} &bull; Campus Administration
                 </p>
               </div>
+            </div>
+
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-semibold text-slate-900">
+                {profile?.full_name}
+              </p>
+              <p className="text-xs text-slate-500">Campus Admin</p>
             </div>
           </div>
         </header>
@@ -1012,6 +1022,11 @@ export default function CampusAdminPortalClient({
                 )}
               </div>
             </div>
+          )}
+
+          {/* TAB 5: MY PROFILE */}
+          {activeTab === "profile" && (
+            <UserProfileView profile={profile} campus={campus} />
           )}
         </main>
       </div>

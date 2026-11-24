@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
@@ -28,9 +27,11 @@ import {
   Megaphone,
   User,
   UserCheck,
+  UserCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
@@ -554,6 +555,11 @@ export default function FacultyPortalClient({
       label: "Announcements & Availability",
       icon: Megaphone,
     },
+    {
+      id: "profile",
+      label: "My Profile",
+      icon: UserCircle,
+    },
   ];
 
   return (
@@ -589,18 +595,9 @@ export default function FacultyPortalClient({
             <SidebarToggleButton onClick={toggleSidebar} />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <nav
-                  aria-label="Breadcrumb"
-                  className="flex items-center gap-1.5 text-xs font-medium text-slate-500"
-                >
-                  <Link href="/" className="hover:text-chmsu-forest">
-                    Gateway
-                  </Link>
-                  <span>/</span>
-                  <span className="truncate font-semibold text-chmsu-forest">
-                    CHMSU {campus.name}
-                  </span>
-                </nav>
+                <span className="truncate text-sm font-bold text-chmsu-forest">
+                  CHMSU {campus.name}
+                </span>
                 <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                   {roleLabel}
                 </span>
@@ -612,9 +609,7 @@ export default function FacultyPortalClient({
             <p className="text-sm font-semibold text-slate-900">
               {profile?.full_name}
             </p>
-            <p className="text-xs text-slate-500">
-              {profile?.department || profile?.email}
-            </p>
+            <p className="text-xs text-slate-500">{roleLabel}</p>
           </div>
         </header>
 
@@ -1360,6 +1355,11 @@ export default function FacultyPortalClient({
                 </div>
               )}
             </section>
+          )}
+
+          {/* TAB 4: MY PROFILE */}
+          {activeTab === "profile" && (
+            <UserProfileView profile={profile} campus={campus} />
           )}
         </main>
       </div>

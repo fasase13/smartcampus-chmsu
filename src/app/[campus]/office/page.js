@@ -63,7 +63,7 @@ export default async function OfficeScannerPage({ params }) {
       .order("name", { ascending: true }),
     supabase
       .from("profiles")
-      .select("id, full_name, role, department, campus_id")
+      .select("id, full_name, role, department, office_location, campus_id")
       .eq("is_active", true)
       .neq("role", "student")
       .order("full_name", { ascending: true }),

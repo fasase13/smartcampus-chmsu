@@ -190,3 +190,67 @@ export function getSubOptionsForSelection(campusSlug, role, department) {
 
   return entry.administrativeDepartments[department] ?? [];
 }
+
+/**
+ * Returns grouped Destination Office options for a given campus slug
+ * (used by RMO document intake and Office QR Scanner forwarding dropdowns).
+ * - Administrative / Support divisions are grouped by division name.
+ * - Each Academic College / Department on the selected campus is rendered as
+ *   its own <optgroup> listing ALL sub-offices under that college.
+ */
+export function getDestinationOfficesForCampus(campusSlug) {
+  const entry = CHMSU_CAMPUS_DIRECTORY[campusSlug];
+  if (!entry) return [];
+
+  const groups = [];
+
+  for (const [deptName, offices] of Object.entries(
+    entry.administrativeDepartments
+  )) {
+    groups.push({
+      label: deptName,
+      options: offices,
+    });
+  }
+
+  for (const college of Object.keys(entry.academicColleges)) {
+    groups.push({
+      label: college,
+      options: ACADEMIC_COLLEGE_OFFICES.map(
+        (office) => `${college} — ${office}`
+      ),
+    });
+  }
+
+  return groups;
+}
+
+export function getAllDestinationOfficesForCampus(campusSlug) {
+  return getDestinationOfficesForCampus(campusSlug).flatMap((g) => g.options);
+}
+
+/**
+ * Matches a staff profile against a selected Destination Office dropdown value
+ * (supports both administrative offices like "Human Resource Management Office (HRMO)"
+ * and academic college sub-offices like "College of Computer Studies (CCS) — Faculty Room").
+ */
+export function matchesDestinationOffice(staffMember, selectedDestinationOffice) {
+  const target = String(selectedDestinationOffice ?? "").trim().toLowerCase();
+  if (!target || !staffMember) return false;
+
+  const dept = String(staffMember.department ?? "").trim().toLowerCase();
+  const office = String(staffMember.office_location ?? "").trim().toLowerCase();
+
+  if (office && office === target) return true;
+  if (dept && dept === target) return true;
+  if (dept && office && `${dept} — ${office}` === target) return true;
+
+  if (target.includes(" — ")) {
+    const [targetDept, targetSub] = target.split(" — ").map((s) => s.trim());
+    if (dept && office && dept === targetDept && office === targetSub) {
+      return true;
+    }
+  }
+
+  return false;
+}

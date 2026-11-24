@@ -272,11 +272,18 @@ export const DOCUMENT_PRIORITIES = [
 ];
 
 export const SLA_PRESETS = [
-  { label: "24h (1 Day)", hours: 24 },
-  { label: "48h (2 Days)", hours: 48 },
-  { label: "72h (3 Days)", hours: 72 },
-  { label: "120h (5 Days)", hours: 120 },
+  { label: "1 Day", days: 1, hours: 24 },
+  { label: "2 Days", days: 2, hours: 48 },
+  { label: "3 Days", days: 3, hours: 72 },
+  { label: "5 Days", days: 5, hours: 120 },
 ];
+
+export function formatSlaDays(daysValue) {
+  const num = Number(daysValue);
+  if (!Number.isFinite(num) || num <= 0) return "0 Days";
+  const rounded = Math.round(num * 10) / 10;
+  return `${rounded} ${rounded === 1 ? "Day" : "Days"}`;
+}
 
 export const MAX_DOCUMENT_FILE_BYTES = 15 * 1024 * 1024; // 15 MB
 export const MAX_ID_PHOTO_BYTES = 5 * 1024 * 1024; // 5 MB

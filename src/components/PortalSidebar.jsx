@@ -110,9 +110,19 @@ export default function PortalSidebar({
   onToggleCollapse,
   mobileOpen = false,
   onCloseMobile,
+  onProfileClick,
   ariaLabel = "Portal Navigation",
 }) {
   const initials = getInitials(profile?.full_name || profile?.email);
+  const hasProfileTab = navItems.some((item) => item.id === "profile");
+  const handleProfileCardClick =
+    onProfileClick ||
+    (hasProfileTab
+      ? () => {
+          onSelect?.("profile");
+          onCloseMobile?.();
+        }
+      : null);
 
   function renderNavItems(isCompact) {
     return navItems.map((item) => {
@@ -272,12 +282,40 @@ export default function PortalSidebar({
           }`}
         >
           {isCompact ? (
-            <div
-              title={`${profile?.full_name ?? "User"} (${roleBadge})`}
-              className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs font-bold text-[#FACC15]"
+            handleProfileCardClick ? (
+              <button
+                type="button"
+                onClick={handleProfileCardClick}
+                title={`My Profile — ${profile?.full_name ?? "User"} (${roleBadge})`}
+                className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs font-bold text-[#FACC15] transition hover:bg-white/20"
+              >
+                {initials}
+              </button>
+            ) : (
+              <div
+                title={`${profile?.full_name ?? "User"} (${roleBadge})`}
+                className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-xs font-bold text-[#FACC15]"
+              >
+                {initials}
+              </div>
+            )
+          ) : handleProfileCardClick ? (
+            <button
+              type="button"
+              onClick={handleProfileCardClick}
+              className="w-full rounded-xl border border-white/10 bg-white/10 p-3 text-left transition hover:bg-white/15"
             >
-              {initials}
-            </div>
+              <p className="truncate text-sm font-semibold text-white">
+                {profile?.full_name}
+              </p>
+              <p className="truncate text-xs text-white/70">{profile?.email}</p>
+              {roleBadge && (
+                <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#FACC15] px-2.5 py-0.5 text-[11px] font-semibold text-[#143D29]">
+                  <RoleIcon className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{roleBadge}</span>
+                </span>
+              )}
+            </button>
           ) : (
             <div className="rounded-xl border border-white/10 bg-white/10 p-3">
               <p className="truncate text-sm font-semibold text-white">

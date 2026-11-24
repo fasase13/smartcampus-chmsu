@@ -25,9 +25,16 @@ import { createClient } from "@/lib/supabase/client";
 import {
   DOCUMENT_PRIORITIES,
   DOCUMENT_STATUS_META,
+  ROLE_LABELS,
   ROUTE_ACTION_LABELS,
   STORAGE_BUCKETS,
+  formatSlaDays,
 } from "@/lib/constants";
+import {
+  getAllDestinationOfficesForCampus,
+  getDestinationOfficesForCampus,
+  matchesDestinationOffice,
+} from "@/lib/chmsuDirectory";
 
 const QrScanner = dynamic(
   () => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner),
@@ -51,15 +58,15 @@ function getSlaSummary(doc) {
     return { label: "Completed", overdue: false };
   }
   const diffMs = new Date(doc.due_at).getTime() - Date.now();
-  const absHours = Math.round(Math.abs(diffMs) / 3600000);
+  const absDays = Math.max(0.1, Math.round((Math.abs(diffMs) / 86400000) * 10) / 10);
   if (diffMs < 0 || doc.is_delayed) {
     return {
-      label: `Overdue by ${absHours}h`,
+      label: `Overdue by ${formatSlaDays(absDays)}`,
       overdue: true,
     };
   }
   return {
-    label: `${absHours}h remaining`,
+    label: `${formatSlaDays(absDays)} remaining`,
     overdue: false,
   };
 }
@@ -123,16 +130,30 @@ export default function OfficeScannerClient({
   // Feedback Banner
   const [feedback, setFeedback] = useState(null);
 
-  const forwardStaffOptions = useMemo(
-    () =>
-      staffDirectory.filter(
-        (s) =>
-          s.campus_id === forwardCampusId ||
-          s.role === "superadmin" ||
-          s.role === "management"
-      ),
-    [staffDirectory, forwardCampusId]
+  const forwardCampusSlug =
+    campusMap[forwardCampusId]?.slug ?? campus.slug;
+
+  const forwardOfficeGroups = useMemo(
+    () => getDestinationOfficesForCampus(forwardCampusSlug),
+    [forwardCampusSlug]
   );
+
+  const validForwardOffices = useMemo(
+    () => new Set(getAllDestinationOfficesForCampus(forwardCampusSlug)),
+    [forwardCampusSlug]
+  );
+
+  const forwardStaffOptions = useMemo(() => {
+    if (!forwardOffice.trim()) return [];
+    return staffDirectory.filter(
+      (s) =>
+        s.id !== profile.id &&
+        (s.campus_id === forwardCampusId ||
+          s.role === "superadmin" ||
+          s.role === "management") &&
+        matchesDestinationOffice(s, forwardOffice)
+    );
+  }, [staffDirectory, forwardCampusId, forwardOffice, profile.id]);
 
   const refreshQueue = useCallback(async () => {
     const supabase = createClient();
@@ -346,10 +367,25 @@ export default function OfficeScannerClient({
       return;
     }
 
-    if (actionType === "forwarded" && !forwardOffice.trim()) {
+    if (
+      actionType === "forwarded" &&
+      (!forwardOffice.trim() || !validForwardOffices.has(forwardOffice.trim()))
+    ) {
       setFeedback({
         type: "error",
-        message: "Please enter the destination office before forwarding.",
+        message: "Please select a valid destination office before forwarding.",
+      });
+      return;
+    }
+
+    if (
+      actionType === "forwarded" &&
+      forwardHolderId &&
+      forwardHolderId === profile.id
+    ) {
+      setFeedback({
+        type: "error",
+        message: "You cannot assign yourself as the document recipient.",
       });
       return;
     }
@@ -880,6 +916,7 @@ export default function OfficeScannerClient({
                       value={forwardCampusId}
                       onChange={(e) => {
                         setForwardCampusId(e.target.value);
+                        setForwardOffice("");
                         setForwardHolderId("");
                       }}
                       aria-label="Forward destination campus"
@@ -892,13 +929,26 @@ export default function OfficeScannerClient({
                       ))}
                     </select>
 
-                    <input
-                      type="text"
+                    <select
                       value={forwardOffice}
-                      onChange={(e) => setForwardOffice(e.target.value)}
-                      placeholder="Next office (e.g., Office of the President)"
+                      onChange={(e) => {
+                        setForwardOffice(e.target.value);
+                        setForwardHolderId("");
+                      }}
+                      aria-label="Forward destination office"
                       className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs text-slate-900"
-                    />
+                    >
+                      <option value="">Select destination office...</option>
+                      {forwardOfficeGroups.map((group) => (
+                        <optgroup key={group.label} label={group.label}>
+                          {group.options.map((office) => (
+                            <option key={office} value={office}>
+                              {office}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
 
                     <select
                       value={forwardHolderId}
@@ -906,10 +956,10 @@ export default function OfficeScannerClient({
                       aria-label="Forward recipient"
                       className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs text-slate-800"
                     >
-                      <option value="">Any officer in office</option>
+                      <option value="">Unassigned (Office Queue)</option>
                       {forwardStaffOptions.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.full_name} ({s.role.replace("_", " ")})
+                          {s.full_name} ({ROLE_LABELS[s.role] ?? s.role.replace("_", " ")})
                         </option>
                       ))}
                     </select>
