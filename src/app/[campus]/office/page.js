@@ -77,7 +77,11 @@ export default async function OfficeScannerPage({ params }) {
   ]);
 
   return (
-    <PortalShell profile={profile} campus={campus}>
+    <PortalShell
+      profile={profile}
+      campus={campus}
+      allCampuses={allCampusesRes.data ?? []}
+    >
       <OfficeScannerClient
         profile={profile}
         campus={campus}

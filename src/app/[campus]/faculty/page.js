@@ -14,6 +14,7 @@ export default async function FacultyPortalPage({ params, searchParams }) {
   const resolvedSearchParams = await searchParams;
   const rawTab = resolvedSearchParams?.tab;
   const initialTab =
+    rawTab === "send" ||
     rawTab === "queue" ||
     rawTab === "announcements" ||
     rawTab === "manage" ||

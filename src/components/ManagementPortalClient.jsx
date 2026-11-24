@@ -20,6 +20,7 @@ import {
   CreditCard,
   Download,
   Eye,
+  FilePlus2,
   FileSpreadsheet,
   FileText,
   Loader2,
@@ -37,6 +38,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -908,6 +910,12 @@ export default function ManagementPortalClient({
       visible: true,
     },
     {
+      id: "send",
+      label: "Send / Register Document",
+      icon: FilePlus2,
+      visible: true,
+    },
+    {
       id: "registrations",
       label: "Pending Registrations",
       icon: UserCheck,
@@ -1041,6 +1049,21 @@ export default function ManagementPortalClient({
 
         {/* Main Workspace */}
         <main className="w-full flex-1 space-y-6 px-4 py-5 sm:px-6">
+          {/* TAB: SEND / REGISTER DOCUMENT */}
+          {activeTab === "send" && (
+            <DocumentRegisterPanel
+              profile={profile}
+              campus={
+                campuses.find((c) => c.id === profile?.campus_id) ??
+                campuses.find((c) => c.is_main) ??
+                campuses[0]
+              }
+              allCampuses={campuses}
+              onDocumentRegistered={refreshDocuments}
+              showPageHeader
+            />
+          )}
+
           {/* Print-Only Institutional Report Header */}
           <div className="hidden border-b-2 border-chmsu-forest pb-4 print:block">
             <div className="flex items-center justify-between">

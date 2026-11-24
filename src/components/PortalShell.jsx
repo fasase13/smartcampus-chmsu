@@ -13,23 +13,31 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { ROLE_LABELS, ROLES } from "@/lib/constants";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
 } from "@/components/PortalSidebar";
 
-export default function PortalShell({ profile, campus, children }) {
+export default function PortalShell({
+  profile,
+  campus,
+  allCampuses = [],
+  children,
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const [signingOut, setSigningOut] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
+  const [activeView, setActiveView] = useState("main"); // main | send | profile
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
     usePortalSidebarState();
 
   const roleLabel = ROLE_LABELS[profile?.role] ?? profile?.role ?? "User";
   const campusSlug = campus?.slug ?? profile?.campuses?.slug ?? "talisay";
   const campusName = campus?.name ?? profile?.campuses?.name ?? "CHMSU";
+  const canSendDocuments =
+    profile?.role !== ROLES.STUDENT && allCampuses.length > 0;
 
   const navItems = [
     {
@@ -60,6 +68,12 @@ export default function PortalShell({ profile, campus, children }) {
         ROLES.SUPERADMIN,
         ROLES.MANAGEMENT,
       ].includes(profile?.role),
+    },
+    {
+      id: "send",
+      label: "Send / Register Document",
+      icon: FilePlus2,
+      visible: canSendDocuments,
     },
     {
       href: `/${campusSlug}/office`,
@@ -99,14 +113,17 @@ export default function PortalShell({ profile, campus, children }) {
     .filter((item) => item.visible)
     .map((item) => {
       if (item.id === "profile") {
-        return { ...item, isActive: showProfile };
+        return { ...item, isActive: activeView === "profile" };
+      }
+      if (item.id === "send") {
+        return { ...item, isActive: activeView === "send" };
       }
       if (item.href === pathname) {
         return {
           id: "current-route",
           label: item.label,
           icon: item.icon,
-          isActive: !showProfile,
+          isActive: activeView === "main",
         };
       }
       return {
@@ -135,10 +152,17 @@ export default function PortalShell({ profile, campus, children }) {
         title="SmartCampus CHMSU"
         subtitle={`CHMSU ${campusName}`}
         navItems={navItems}
-        activeId={showProfile ? "profile" : undefined}
+        activeId={
+          activeView === "profile"
+            ? "profile"
+            : activeView === "send"
+              ? "send"
+              : "current-route"
+        }
         onSelect={(id) => {
-          if (id === "profile") setShowProfile(true);
-          else if (id === "current-route") setShowProfile(false);
+          if (id === "profile") setActiveView("profile");
+          else if (id === "send") setActiveView("send");
+          else if (id === "current-route") setActiveView("main");
         }}
         profile={profile}
         roleBadge={roleLabel}
@@ -183,8 +207,15 @@ export default function PortalShell({ profile, campus, children }) {
 
         {/* Page Body */}
         <main className="w-full flex-1 px-4 py-5 sm:px-6">
-          {showProfile ? (
+          {activeView === "profile" ? (
             <UserProfileView profile={profile} campus={campus} />
+          ) : activeView === "send" && canSendDocuments ? (
+            <DocumentRegisterPanel
+              profile={profile}
+              campus={campus}
+              allCampuses={allCampuses}
+              showPageHeader
+            />
           ) : (
             children
           )}

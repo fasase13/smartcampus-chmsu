@@ -22,6 +22,7 @@ import {
   Building2,
   Radio,
   X,
+  FilePlus2,
   QrCode,
   Newspaper,
   Megaphone,
@@ -36,6 +37,7 @@ import PortalSidebar, {
   SidebarToggleButton,
   usePortalSidebarState,
 } from "@/components/PortalSidebar";
+import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
 import OfficeScannerClient from "@/components/OfficeScannerClient";
 import useUnreadAnnouncements from "@/hooks/useUnreadAnnouncements";
 import {
@@ -540,6 +542,11 @@ export default function FacultyPortalClient({
 
   const navItems = [
     {
+      id: "send",
+      label: "Send / Register Document",
+      icon: FilePlus2,
+    },
+    {
       id: "queue",
       label: "QR Scanner & Office Queue",
       icon: QrCode,
@@ -641,6 +648,16 @@ export default function FacultyPortalClient({
                 <X className="h-4 w-4" />
               </button>
             </div>
+          )}
+
+          {/* TAB 0: SEND / REGISTER DOCUMENT */}
+          {activeTab === "send" && (
+            <DocumentRegisterPanel
+              profile={profile}
+              campus={campus}
+              allCampuses={allCampuses}
+              showPageHeader
+            />
           )}
 
           {/* TAB 1: QR SCANNER & OFFICE QUEUE (Kept mounted so queue data stays cached; camera stops on tab switch) */}

@@ -33,8 +33,15 @@ import {
 import {
   getAllDestinationOfficesForCampus,
   getDestinationOfficesForCampus,
-  matchesDestinationOffice,
 } from "@/lib/chmsuDirectory";
+
+function formatRecipientOption(r) {
+  const roleLabel = ROLE_LABELS[r.role] ?? r.role?.replace("_", " ") ?? "Staff";
+  const detail = r.office || r.department;
+  return detail
+    ? `${r.full_name} — ${roleLabel} (${detail})`
+    : `${r.full_name} — ${roleLabel}`;
+}
 
 const QrScanner = dynamic(
   () => import("@yudiel/react-qr-scanner").then((mod) => mod.Scanner),
@@ -75,7 +82,6 @@ export default function OfficeScannerClient({
   profile,
   campus,
   allCampuses,
-  staffDirectory,
   initialDocuments,
   controlledCameraActive,
   onCameraActiveChange,
@@ -120,6 +126,10 @@ export default function OfficeScannerClient({
   const [forwardCampusId, setForwardCampusId] = useState(campus.id);
   const [forwardOffice, setForwardOffice] = useState("");
   const [forwardHolderId, setForwardHolderId] = useState("");
+  const [forwardRecipients, setForwardRecipients] = useState([]);
+  const [loadingForwardRecipients, setLoadingForwardRecipients] =
+    useState(false);
+  const forwardReqIdRef = useRef(0);
   const [acting, setActing] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState(false);
 
@@ -143,17 +153,39 @@ export default function OfficeScannerClient({
     [forwardCampusSlug]
   );
 
-  const forwardStaffOptions = useMemo(() => {
-    if (!forwardOffice.trim()) return [];
-    return staffDirectory.filter(
-      (s) =>
-        s.id !== profile.id &&
-        (s.campus_id === forwardCampusId ||
-          s.role === "superadmin" ||
-          s.role === "management") &&
-        matchesDestinationOffice(s, forwardOffice)
-    );
-  }, [staffDirectory, forwardCampusId, forwardOffice, profile.id]);
+  const fetchForwardRecipients = useCallback(async (campusId, officeName) => {
+    const cleanOffice = String(officeName ?? "").trim();
+    const reqId = ++forwardReqIdRef.current;
+
+    if (!campusId || !cleanOffice) {
+      setForwardRecipients([]);
+      setLoadingForwardRecipients(false);
+      return;
+    }
+
+    setLoadingForwardRecipients(true);
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc(
+        "get_eligible_document_recipients",
+        {
+          p_campus_id: campusId,
+          p_destination_office: cleanOffice,
+        }
+      );
+
+      if (forwardReqIdRef.current !== reqId) return;
+      if (error) {
+        setForwardRecipients([]);
+      } else {
+        setForwardRecipients(Array.isArray(data) ? data : []);
+      }
+    } finally {
+      if (forwardReqIdRef.current === reqId) {
+        setLoadingForwardRecipients(false);
+      }
+    }
+  }, []);
 
   const refreshQueue = useCallback(async () => {
     const supabase = createClient();
@@ -918,6 +950,8 @@ export default function OfficeScannerClient({
                         setForwardCampusId(e.target.value);
                         setForwardOffice("");
                         setForwardHolderId("");
+                        setForwardRecipients([]);
+                        setLoadingForwardRecipients(false);
                       }}
                       aria-label="Forward destination campus"
                       className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-800"
@@ -932,8 +966,10 @@ export default function OfficeScannerClient({
                     <select
                       value={forwardOffice}
                       onChange={(e) => {
-                        setForwardOffice(e.target.value);
+                        const nextOffice = e.target.value;
+                        setForwardOffice(nextOffice);
                         setForwardHolderId("");
+                        fetchForwardRecipients(forwardCampusId, nextOffice);
                       }}
                       aria-label="Forward destination office"
                       className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs text-slate-900"
@@ -950,19 +986,29 @@ export default function OfficeScannerClient({
                       ))}
                     </select>
 
-                    <select
-                      value={forwardHolderId}
-                      onChange={(e) => setForwardHolderId(e.target.value)}
-                      aria-label="Forward recipient"
-                      className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs text-slate-800"
-                    >
-                      <option value="">Unassigned (Office Queue)</option>
-                      {forwardStaffOptions.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.full_name} ({ROLE_LABELS[s.role] ?? s.role.replace("_", " ")})
+                    <div className="relative">
+                      <select
+                        value={forwardHolderId}
+                        disabled={loadingForwardRecipients}
+                        onChange={(e) => setForwardHolderId(e.target.value)}
+                        aria-label="Forward recipient"
+                        className="w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs text-slate-800 disabled:opacity-70"
+                      >
+                        <option value="">
+                          {loadingForwardRecipients
+                            ? "Loading eligible recipients..."
+                            : "Unassigned (Office Queue)"}
                         </option>
-                      ))}
-                    </select>
+                        {forwardRecipients.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {formatRecipientOption(r)}
+                          </option>
+                        ))}
+                      </select>
+                      {loadingForwardRecipients && (
+                        <Loader2 className="pointer-events-none absolute right-7 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-chmsu-green" />
+                      )}
+                    </div>
                   </div>
                   <div className="flex justify-end gap-2">
                     <button

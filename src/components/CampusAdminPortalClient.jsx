@@ -8,6 +8,7 @@ import {
   CreditCard,
   Edit3,
   Eye,
+  FilePlus2,
   FileText,
   Loader2,
   Megaphone,
@@ -22,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
@@ -69,6 +71,7 @@ const EMPTY_ANNOUNCEMENT = {
 export default function CampusAdminPortalClient({
   profile,
   campus,
+  allCampuses = [],
   initialUsers,
   initialAnnouncements,
   initialDocuments,
@@ -410,6 +413,7 @@ export default function CampusAdminPortalClient({
       icon: FileText,
       alertCount: overdueDocs.length,
     },
+    { id: "send", label: "Send / Register Document", icon: FilePlus2 },
     { id: "profile", label: "My Profile", icon: UserCircle },
   ];
 
@@ -482,6 +486,17 @@ export default function CampusAdminPortalClient({
                 <X className="h-4 w-4" />
               </button>
             </div>
+          )}
+
+          {/* TAB: SEND / REGISTER DOCUMENT */}
+          {activeTab === "send" && (
+            <DocumentRegisterPanel
+              profile={profile}
+              campus={campus}
+              allCampuses={allCampuses}
+              onDocumentRegistered={refreshDocuments}
+              showPageHeader
+            />
           )}
 
           {/* TAB 1: PENDING REGISTRATIONS */}
