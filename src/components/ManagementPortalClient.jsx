@@ -913,7 +913,13 @@ export default function ManagementPortalClient({
       id: "send",
       label: "Send / Register Document",
       icon: FilePlus2,
-      visible: true,
+      visible: [
+        ROLES.FACULTY,
+        ROLES.STAFF,
+        ROLES.DEPT_HEAD,
+        ROLES.RMO,
+        ROLES.MANAGEMENT,
+      ].includes(profile?.role),
     },
     {
       id: "registrations",
@@ -1049,20 +1055,27 @@ export default function ManagementPortalClient({
 
         {/* Main Workspace */}
         <main className="w-full flex-1 space-y-6 px-4 py-5 sm:px-6">
-          {/* TAB: SEND / REGISTER DOCUMENT */}
-          {activeTab === "send" && (
-            <DocumentRegisterPanel
-              profile={profile}
-              campus={
-                campuses.find((c) => c.id === profile?.campus_id) ??
-                campuses.find((c) => c.is_main) ??
-                campuses[0]
-              }
-              allCampuses={campuses}
-              onDocumentRegistered={refreshDocuments}
-              showPageHeader
-            />
-          )}
+          {/* TAB: SEND / REGISTER DOCUMENT (Strictly non-admin management/staff roles) */}
+          {activeTab === "send" &&
+            [
+              ROLES.FACULTY,
+              ROLES.STAFF,
+              ROLES.DEPT_HEAD,
+              ROLES.RMO,
+              ROLES.MANAGEMENT,
+            ].includes(profile?.role) && (
+              <DocumentRegisterPanel
+                profile={profile}
+                campus={
+                  campuses.find((c) => c.id === profile?.campus_id) ??
+                  campuses.find((c) => c.is_main) ??
+                  campuses[0]
+                }
+                allCampuses={campuses}
+                onDocumentRegistered={refreshDocuments}
+                showPageHeader
+              />
+            )}
 
           {/* Print-Only Institutional Report Header */}
           <div className="hidden border-b-2 border-chmsu-forest pb-4 print:block">

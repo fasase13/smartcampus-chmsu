@@ -15,7 +15,6 @@ import {
   Download,
   Edit3,
   Eye,
-  FilePlus2,
   FileSpreadsheet,
   Globe,
   Loader2,
@@ -33,7 +32,6 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
@@ -793,7 +791,6 @@ export default function SuperadminPortalClient({
       icon: ShieldAlert,
       alertBadge: totalOverdueCount,
     },
-    { id: "send", label: "Send / Register Document", icon: FilePlus2 },
     { id: "users", label: "Users & Roles", icon: Users },
     {
       id: "registrations",
@@ -890,17 +887,6 @@ export default function SuperadminPortalClient({
                 <X className="h-4 w-4" />
               </button>
             </div>
-          )}
-
-          {/* TAB: SEND / REGISTER DOCUMENT */}
-          {activeTab === "send" && (
-            <DocumentRegisterPanel
-              profile={profile}
-              campus={campuses.find((c) => c.is_main) ?? campuses[0]}
-              allCampuses={campuses}
-              onDocumentRegistered={refreshDocuments}
-              showPageHeader
-            />
           )}
 
           {/* TAB 1: OVERVIEW & CAMPUS ADMINS */}

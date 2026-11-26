@@ -18,9 +18,21 @@ import {
   DOCUMENT_TYPES,
   MAX_DOCUMENT_FILE_BYTES,
   ROLE_LABELS,
+  ROLES,
   SLA_PRESETS,
   STORAGE_BUCKETS,
 } from "@/lib/constants";
+
+const DOCUMENT_REGISTER_ALLOWED_ROLES = [
+  ROLES.FACULTY,
+  ROLES.STAFF,
+  ROLES.DEPT_HEAD,
+  ROLES.RMO,
+  ROLES.MANAGEMENT,
+];
+
+const FORBIDDEN_REGISTER_MESSAGE =
+  "Administrators and students are not permitted to register or send documents.";
 import {
   getAllDestinationOfficesForCampus,
   getDestinationOfficesForCampus,
@@ -65,11 +77,13 @@ export default function DocumentRegisterPanel({
   subtitle = "Generates a unique opaque QR token and printable CHMSU routing slip immediately on save.",
   showPageHeader = false,
 }) {
+  // Prefer profile.campus_id first so campus-bound users always insert with
+  // their assigned origin_campus_id (matching RLS), falling back to portal campus
   const defaultOriginCampus =
-    (campus?.id ? campus : null) ??
     (profile?.campus_id
       ? allCampuses.find((c) => c.id === profile.campus_id)
       : null) ??
+    (campus?.id ? campus : null) ??
     allCampuses.find((c) => c.is_main) ??
     allCampuses[0] ??
     null;
@@ -91,7 +105,7 @@ export default function DocumentRegisterPanel({
       "CHMSU Office"
   ).trim();
 
-  const originCampusId = defaultOriginCampus?.id ?? "";
+  const originCampusId = profile?.campus_id || defaultOriginCampus?.id || "";
   const originCampusCode = defaultOriginCampus?.code ?? "CHMSU";
   const originCampusSlug = defaultOriginCampus?.slug ?? "talisay";
   const originCampusName = defaultOriginCampus?.name ?? "CHMSU";
@@ -224,9 +238,21 @@ export default function DocumentRegisterPanel({
     setAttachedFile(file);
   }
 
+  const isAllowedToRegister = DOCUMENT_REGISTER_ALLOWED_ROLES.includes(
+    profile?.role
+  );
+
   async function handleRegisterDocument(e) {
     e.preventDefault();
     setFeedback(null);
+
+    if (!isAllowedToRegister) {
+      setFeedback({
+        type: "error",
+        message: `403 Forbidden — ${FORBIDDEN_REGISTER_MESSAGE}`,
+      });
+      return;
+    }
 
     if (!originCampusId) {
       setFeedback({
@@ -408,6 +434,24 @@ export default function DocumentRegisterPanel({
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (!isAllowedToRegister) {
+    return (
+      <section className="rounded-2xl border border-red-200 bg-red-50 p-6 text-red-900">
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+          <div>
+            <h2 className="text-base font-bold">
+              403 &mdash; Document Registration Not Permitted
+            </h2>
+            <p className="mt-1 text-sm text-red-800">
+              {FORBIDDEN_REGISTER_MESSAGE}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (

@@ -37,7 +37,13 @@ export default function PortalShell({
   const campusSlug = campus?.slug ?? profile?.campuses?.slug ?? "talisay";
   const campusName = campus?.name ?? profile?.campuses?.name ?? "CHMSU";
   const canSendDocuments =
-    profile?.role !== ROLES.STUDENT && allCampuses.length > 0;
+    [
+      ROLES.FACULTY,
+      ROLES.STAFF,
+      ROLES.DEPT_HEAD,
+      ROLES.RMO,
+      ROLES.MANAGEMENT,
+    ].includes(profile?.role) && allCampuses.length > 0;
 
   const navItems = [
     {
