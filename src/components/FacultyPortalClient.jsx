@@ -23,12 +23,11 @@ import {
   Radio,
   X,
   FilePlus2,
-  QrCode,
+  FolderOpen,
   Newspaper,
   Megaphone,
   User,
   UserCheck,
-  UserCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
@@ -38,7 +37,9 @@ import PortalSidebar, {
   usePortalSidebarState,
 } from "@/components/PortalSidebar";
 import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
-import OfficeScannerClient from "@/components/OfficeScannerClient";
+import MyDocumentsClient from "@/components/MyDocumentsClient";
+import LiveNotificationBell from "@/components/LiveNotificationBell";
+import HeaderAccountMenu from "@/components/HeaderAccountMenu";
 import useUnreadAnnouncements from "@/hooks/useUnreadAnnouncements";
 import {
   ANNOUNCEMENT_CATEGORIES,
@@ -101,19 +102,16 @@ export default function FacultyPortalClient({
 }) {
   const router = useRouter();
   const canPublishUniversityWide = CROSS_CAMPUS_ROLES.includes(profile.role);
+  const isTeaching = Boolean(profile?.is_teaching);
   const roleLabel = ROLE_LABELS[profile?.role] ?? profile?.role ?? "Faculty";
 
   // Unified client-side tab state & sidebar collapse state
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [scannerCameraActive, setScannerCameraActive] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
     usePortalSidebarState();
 
   function handleSelectTab(nextTab) {
-    if (nextTab !== "queue") {
-      setScannerCameraActive(false);
-    }
     setActiveTab(nextTab);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -211,8 +209,9 @@ export default function FacultyPortalClient({
     };
   }, [campus.slug, profile.id, refreshAnnouncements]);
 
-  // Update live availability immediately
+  // Update live availability immediately (teaching personnel only)
   async function updateAvailability(overrides = {}) {
+    if (!isTeaching) return;
     setSavingAvailability(true);
     setFeedback(null);
 
@@ -547,9 +546,9 @@ export default function FacultyPortalClient({
       icon: FilePlus2,
     },
     {
-      id: "queue",
-      label: "QR Scanner & Office Queue",
-      icon: QrCode,
+      id: "documents",
+      label: "My Documents",
+      icon: FolderOpen,
     },
     {
       id: "announcements",
@@ -559,13 +558,10 @@ export default function FacultyPortalClient({
     },
     {
       id: "manage",
-      label: "Announcements & Availability",
+      label: isTeaching
+        ? "Announcements & Availability"
+        : "Manage Announcements",
       icon: Megaphone,
-    },
-    {
-      id: "profile",
-      label: "My Profile",
-      icon: UserCircle,
     },
   ];
 
@@ -612,11 +608,19 @@ export default function FacultyPortalClient({
             </div>
           </div>
 
-          <div className="hidden text-right sm:block">
-            <p className="text-sm font-semibold text-slate-900">
-              {profile?.full_name}
-            </p>
-            <p className="text-xs text-slate-500">{roleLabel}</p>
+          <div className="flex items-center gap-2.5">
+            <LiveNotificationBell
+              userId={profile?.id}
+              onNavigate={(item) => {
+                if (item.type === "announcement") handleSelectTab("announcements");
+                else handleSelectTab("documents");
+              }}
+            />
+            <HeaderAccountMenu
+              onOpenProfile={() => handleSelectTab("profile")}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
+            />
           </div>
         </header>
 
@@ -627,8 +631,8 @@ export default function FacultyPortalClient({
             <div
               role="status"
               className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${feedback.type === "error"
-                  ? "border-red-200 bg-red-50 text-red-800"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : "border-emerald-200 bg-emerald-50 text-emerald-900"
                 }`}
             >
               <div className="flex items-center gap-2.5">
@@ -660,18 +664,15 @@ export default function FacultyPortalClient({
             />
           )}
 
-          {/* TAB 1: QR SCANNER & OFFICE QUEUE (Kept mounted so queue data stays cached; camera stops on tab switch) */}
-          <div className={activeTab === "queue" ? "" : "hidden"}>
-            <OfficeScannerClient
+          {/* TAB 1: MY DOCUMENTS */}
+          {activeTab === "documents" && (
+            <MyDocumentsClient
               profile={profile}
               campus={campus}
               allCampuses={allCampuses}
-              staffDirectory={staffDirectory}
               initialDocuments={initialDocuments}
-              controlledCameraActive={scannerCameraActive}
-              onCameraActiveChange={setScannerCameraActive}
             />
-          </div>
+          )}
 
           {/* TAB 3: ANNOUNCEMENTS & AVAILABILITY (Availability + Publish Composer ONLY) */}
           {activeTab === "manage" && (
@@ -680,146 +681,156 @@ export default function FacultyPortalClient({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight text-chmsu-forest">
-                    Announcements &amp; Availability
+                    {isTeaching
+                      ? "Announcements & Availability"
+                      : "Manage Announcements"}
                   </h1>
                   <p className="mt-0.5 text-sm text-slate-600">
-                    Manage your real-time kiosk availability and publish campus
-                    notices for CHMSU {campus.name}.
+                    {isTeaching
+                      ? `Manage your real-time kiosk availability and publish campus notices for CHMSU ${campus.name}.`
+                      : `Publish campus notices, calendar events, or advisories for CHMSU ${campus.name}.`}
                   </p>
                 </div>
 
-                <span
-                  className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
-                >
+                {isTeaching && (
                   <span
-                    className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
-                  />
-                  Status: {currentStatusMeta.label}
-                </span>
+                    className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
+                  >
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
+                    />
+                    Status: {currentStatusMeta.label}
+                  </span>
+                )}
               </div>
 
-              {/* Side-by-Side Grid: Live Availability Card + Announcement Composer */}
+              {/* Side-by-Side Grid: Live Availability Card (Teaching Only) + Announcement Composer */}
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
                 {/* 1. Live Availability Control Card */}
-                <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
-                        <Radio className="h-5 w-5 text-chmsu-green" />
-                        Live Availability Control
-                      </h2>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        One-click status updates sync immediately to the campus kiosk.
-                      </p>
+                {isTeaching && (
+                  <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
+                          <Radio className="h-5 w-5 text-chmsu-green" />
+                          Live Availability Control
+                        </h2>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          One-click status updates sync immediately to the campus kiosk.
+                        </p>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* One-Click Status Buttons */}
-                  <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
-                    {AVAILABILITY_STATUSES.map((st) => {
-                      const isSelected = availabilityStatus === st.value;
-                      return (
-                        <button
-                          key={st.value}
-                          type="button"
-                          disabled={savingAvailability}
-                          onClick={() =>
-                            updateAvailability({ availability_status: st.value })
-                          }
-                          className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${isSelected
+                    {/* One-Click Status Buttons */}
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2">
+                      {AVAILABILITY_STATUSES.map((st) => {
+                        const isSelected = availabilityStatus === st.value;
+                        return (
+                          <button
+                            key={st.value}
+                            type="button"
+                            disabled={savingAvailability}
+                            onClick={() =>
+                              updateAvailability({ availability_status: st.value })
+                            }
+                            className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition ${isSelected
                               ? "border-chmsu-forest bg-chmsu-forest text-white shadow-xs"
                               : "border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-green hover:bg-white"
-                            }`}
-                        >
-                          <span
-                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${isSelected ? "bg-chmsu-gold" : st.dotClass
                               }`}
-                          />
-                          <span>{st.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          >
+                            <span
+                              className={`h-2.5 w-2.5 shrink-0 rounded-full ${isSelected ? "bg-chmsu-gold" : st.dotClass
+                                }`}
+                            />
+                            <span>{st.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                  {/* Office Location & Availability Note */}
-                  <div className="mt-5 space-y-3.5 border-t border-chmsu-border pt-4">
-                    <div>
-                      <label
-                        htmlFor="office_location"
-                        className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                      >
-                        Office / Room Location
-                      </label>
-                      <div className="relative mt-1">
-                        <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    {/* Office Location & Availability Note */}
+                    <div className="mt-5 space-y-3.5 border-t border-chmsu-border pt-4">
+                      <div>
+                        <label
+                          htmlFor="office_location"
+                          className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          Office / Room Location
+                        </label>
+                        <div className="relative mt-1">
+                          <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                          <input
+                            id="office_location"
+                            type="text"
+                            value={officeLocation}
+                            onChange={(e) => setOfficeLocation(e.target.value)}
+                            placeholder="e.g., CCS Faculty Room 204"
+                            className="w-full rounded-xl border border-chmsu-border bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label
+                          htmlFor="availability_note"
+                          className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
+                        >
+                          Public Availability Note (Max 200 chars)
+                        </label>
                         <input
-                          id="office_location"
+                          id="availability_note"
                           type="text"
-                          value={officeLocation}
-                          onChange={(e) => setOfficeLocation(e.target.value)}
-                          placeholder="e.g., CCS Faculty Room 204"
-                          className="w-full rounded-xl border border-chmsu-border bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
+                          maxLength={200}
+                          value={availabilityNote}
+                          onChange={(e) => setAvailabilityNote(e.target.value)}
+                          placeholder="e.g., Consultation hours 1:00 PM – 4:00 PM"
+                          className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
                         />
                       </div>
-                    </div>
 
-                    <div>
-                      <label
-                        htmlFor="availability_note"
-                        className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
-                      >
-                        Public Availability Note (Max 200 chars)
+                      {/* Show on Kiosk Toggle */}
+                      <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3.5 py-2.5">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">
+                            Show on Public Kiosk
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Displays only your name, office, and live status (no email/PII).
+                          </p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={showOnKiosk}
+                          disabled={savingAvailability}
+                          onChange={(e) =>
+                            updateAvailability({ show_on_kiosk: e.target.checked })
+                          }
+                          className="h-5 w-5 rounded border-slate-300 accent-chmsu-green"
+                        />
                       </label>
-                      <input
-                        id="availability_note"
-                        type="text"
-                        maxLength={200}
-                        value={availabilityNote}
-                        onChange={(e) => setAvailabilityNote(e.target.value)}
-                        placeholder="e.g., Consultation hours 1:00 PM – 4:00 PM"
-                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
-                      />
-                    </div>
 
-                    {/* Show on Kiosk Toggle */}
-                    <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3.5 py-2.5">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-800">
-                          Show on Public Kiosk
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Displays only your name, office, and live status (no email/PII).
-                        </p>
-                      </div>
-                      <input
-                        type="checkbox"
-                        checked={showOnKiosk}
+                      <button
+                        type="button"
                         disabled={savingAvailability}
-                        onChange={(e) =>
-                          updateAvailability({ show_on_kiosk: e.target.checked })
-                        }
-                        className="h-5 w-5 rounded border-slate-300 accent-chmsu-green"
-                      />
-                    </label>
-
-                    <button
-                      type="button"
-                      disabled={savingAvailability}
-                      onClick={() => updateAvailability()}
-                      className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-chmsu-navy px-4 py-2 text-sm font-semibold text-white transition hover:bg-chmsu-forest disabled:opacity-60"
-                    >
-                      {savingAvailability ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )}
-                      Save Office &amp; Note
-                    </button>
-                  </div>
-                </section>
+                        onClick={() => updateAvailability()}
+                        className="inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-chmsu-navy px-4 py-2 text-sm font-semibold text-white transition hover:bg-chmsu-forest disabled:opacity-60"
+                      >
+                        {savingAvailability ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                        Save Office &amp; Note
+                      </button>
+                    </div>
+                  </section>
+                )}
 
                 {/* 2. Announcement Composer */}
-                <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-7">
+                <section
+                  className={`rounded-2xl border border-chmsu-border bg-white p-5 ${isTeaching ? "xl:col-span-7" : "xl:col-span-12"
+                    }`}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
@@ -1139,8 +1150,8 @@ export default function FacultyPortalClient({
                                 <div className="flex flex-wrap gap-1.5">
                                   <span
                                     className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${item.is_active
-                                        ? "bg-emerald-100 text-emerald-800"
-                                        : "bg-slate-200 text-slate-600"
+                                      ? "bg-emerald-100 text-emerald-800"
+                                      : "bg-slate-200 text-slate-600"
                                       }`}
                                   >
                                     {item.is_active ? "Active" : "Inactive"}
@@ -1257,8 +1268,8 @@ export default function FacultyPortalClient({
                       type="button"
                       onClick={() => setNewsCategory(cat.value)}
                       className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${newsCategory === cat.value
-                          ? "bg-chmsu-forest text-white"
-                          : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green"
+                        ? "bg-chmsu-forest text-white"
+                        : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green"
                         }`}
                     >
                       {cat.label}
@@ -1293,11 +1304,11 @@ export default function FacultyPortalClient({
                       <article
                         key={item.id}
                         className={`rounded-2xl border bg-white p-4 sm:p-5 ${item.priority === "urgent" ||
-                            item.category === "emergency"
-                            ? "border-chmsu-flame/50 bg-orange-50/40"
-                            : item.is_pinned
-                              ? "border-chmsu-gold bg-amber-50/30"
-                              : "border-chmsu-border"
+                          item.category === "emergency"
+                          ? "border-chmsu-flame/50 bg-orange-50/40"
+                          : item.is_pinned
+                            ? "border-chmsu-gold bg-amber-50/30"
+                            : "border-chmsu-border"
                           }`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">

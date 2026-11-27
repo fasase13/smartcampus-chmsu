@@ -4,16 +4,17 @@ import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   FilePlus2,
+  FolderOpen,
   Megaphone,
-  QrCode,
   ShieldCheck,
   UserCheck,
-  UserCircle,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLE_LABELS, ROLES } from "@/lib/constants";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
 import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
+import LiveNotificationBell from "@/components/LiveNotificationBell";
+import HeaderAccountMenu from "@/components/HeaderAccountMenu";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -37,13 +38,8 @@ export default function PortalShell({
   const campusSlug = campus?.slug ?? profile?.campuses?.slug ?? "talisay";
   const campusName = campus?.name ?? profile?.campuses?.name ?? "CHMSU";
   const canSendDocuments =
-    [
-      ROLES.FACULTY,
-      ROLES.STAFF,
-      ROLES.DEPT_HEAD,
-      ROLES.RMO,
-      ROLES.MANAGEMENT,
-    ].includes(profile?.role) && allCampuses.length > 0;
+    [ROLES.FACULTY, ROLES.STAFF, ROLES.RMO].includes(profile?.role) &&
+    allCampuses.length > 0;
 
   const navItems = [
     {
@@ -83,10 +79,9 @@ export default function PortalShell({
     },
     {
       href: `/${campusSlug}/office`,
-      label: "QR Scanner & Office Queue",
-      icon: QrCode,
+      label: "My Documents",
+      icon: FolderOpen,
       visible: [
-        ROLES.DEPT_HEAD,
         ROLES.RMO,
         ROLES.FACULTY,
         ROLES.STAFF,
@@ -97,23 +92,18 @@ export default function PortalShell({
     },
     {
       href: `/${campusSlug}/faculty`,
-      label: "Announcements & Availability",
+      label: Boolean(profile?.is_teaching)
+        ? "Announcements & Availability"
+        : "Manage Announcements",
       icon: Megaphone,
       visible: [
         ROLES.FACULTY,
         ROLES.STAFF,
-        ROLES.DEPT_HEAD,
         ROLES.RMO,
         ROLES.CAMPUS_ADMIN,
         ROLES.SUPERADMIN,
         ROLES.MANAGEMENT,
       ].includes(profile?.role),
-    },
-    {
-      id: "profile",
-      label: "My Profile",
-      icon: UserCircle,
-      visible: true,
     },
   ]
     .filter((item) => item.visible)
@@ -203,11 +193,23 @@ export default function PortalShell({
             </div>
           </div>
 
-          <div className="hidden text-right sm:block">
-            <p className="text-sm font-semibold text-slate-900">
-              {profile?.full_name}
-            </p>
-            <p className="text-xs text-slate-500">{roleLabel}</p>
+          <div className="flex items-center gap-2.5">
+            <LiveNotificationBell
+              userId={profile?.id}
+              onNavigate={() => setActiveView("main")}
+            />
+            <HeaderAccountMenu
+              onOpenProfile={() => {
+                setActiveView("profile");
+                if (typeof window !== "undefined") {
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("tab", "profile");
+                  window.history.replaceState(null, "", url.toString());
+                }
+              }}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
+            />
           </div>
         </header>
 

@@ -3,6 +3,7 @@ import { getAuthenticatedProfile } from "@/lib/supabase/server";
 import {
   CROSS_CAMPUS_ROLES,
   PORTAL_ROLE_ACCESS,
+  ROLES,
   getDefaultRouteForRole,
 } from "@/lib/constants";
 import FacultyPortalClient from "@/components/FacultyPortalClient";
@@ -15,12 +16,14 @@ export default async function FacultyPortalPage({ params, searchParams }) {
   const rawTab = resolvedSearchParams?.tab;
   const initialTab =
     rawTab === "send" ||
-    rawTab === "queue" ||
+    rawTab === "documents" ||
     rawTab === "announcements" ||
     rawTab === "manage" ||
     rawTab === "profile"
       ? rawTab
-      : "manage";
+      : rawTab === "queue"
+        ? "documents"
+        : "manage";
 
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
@@ -34,6 +37,11 @@ export default async function FacultyPortalPage({ params, searchParams }) {
 
   if (!profile.is_active || profile.approval_status !== "approved") {
     redirect("/pending-approval");
+  }
+
+  // Strict isolation: Institutional Management ONLY uses /management
+  if (profile.role === ROLES.MANAGEMENT) {
+    redirect("/management");
   }
 
   // Server-side RBAC check (defense-in-depth alongside proxy middleware)

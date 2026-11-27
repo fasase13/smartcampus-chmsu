@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
+import LiveNotificationBell from "@/components/LiveNotificationBell";
+import HeaderAccountMenu from "@/components/HeaderAccountMenu";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -226,12 +228,14 @@ export default function StudentPortalClient({
     },
   ];
 
-  const sidebarNavItems = tabs.map((tab) => ({
-    id: tab.id,
-    label: tab.desktopLabel,
-    icon: tab.icon,
-    badge: tab.badge,
-  }));
+  const sidebarNavItems = tabs
+    .filter((tab) => tab.id !== "profile")
+    .map((tab) => ({
+      id: tab.id,
+      label: tab.desktopLabel,
+      icon: tab.icon,
+      badge: tab.badge,
+    }));
 
   return (
     <div className="min-h-dvh flex flex-col overflow-x-hidden bg-chmsu-canvas text-slate-900 lg:flex-row">
@@ -257,9 +261,8 @@ export default function StudentPortalClient({
 
       {/* Main Column */}
       <div
-        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 ${
-          collapsed ? "lg:pl-20" : "lg:pl-64"
-        }`}
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 ${collapsed ? "lg:pl-20" : "lg:pl-64"
+          }`}
       >
         {/* Sticky Header */}
         <header className="sticky top-0 z-20 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
@@ -276,19 +279,28 @@ export default function StudentPortalClient({
               </div>
             </div>
 
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-semibold text-slate-900">
-                {profile.full_name}
-              </p>
-              <p className="text-xs text-slate-500">Student</p>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2 sm:hidden">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+              <LiveNotificationBell
+                userId={profile.id}
+                onNavigate={() => setActiveTab("news")}
+              />
+              <HeaderAccountMenu
+                onOpenProfile={() => {
+                  setActiveTab("profile");
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("tab", "profile");
+                    window.history.replaceState(null, "", url.toString());
+                  }
+                }}
+                onSignOut={handleSignOut}
+                signingOut={signingOut}
+              />
               <button
                 type="button"
                 onClick={handleSignOut}
                 disabled={signingOut}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60 sm:hidden"
               >
                 <LogOut className="h-4 w-4" />
                 Sign Out
@@ -343,11 +355,10 @@ export default function StudentPortalClient({
                       key={cat.value}
                       type="button"
                       onClick={() => setNewsCategory(cat.value)}
-                      className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${
-                        newsCategory === cat.value
+                      className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${newsCategory === cat.value
                           ? "bg-chmsu-forest text-white"
                           : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green"
-                      }`}
+                        }`}
                     >
                       {cat.label}
                     </button>
@@ -372,14 +383,13 @@ export default function StudentPortalClient({
                   {filteredAnnouncements.map((item) => (
                     <article
                       key={item.id}
-                      className={`rounded-2xl border bg-white p-4 sm:p-5 ${
-                        item.priority === "urgent" ||
-                        item.category === "emergency"
+                      className={`rounded-2xl border bg-white p-4 sm:p-5 ${item.priority === "urgent" ||
+                          item.category === "emergency"
                           ? "border-chmsu-flame/50 bg-orange-50/40"
                           : item.is_pinned
                             ? "border-chmsu-gold bg-amber-50/30"
                             : "border-chmsu-border"
-                      }`}
+                        }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-1.5">
@@ -494,11 +504,10 @@ export default function StudentPortalClient({
                     key={st.value}
                     type="button"
                     onClick={() => setStatusFilter(st.value)}
-                    className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${
-                      statusFilter === st.value
+                    className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${statusFilter === st.value
                         ? "bg-chmsu-navy text-white"
                         : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-navy/40"
-                    }`}
+                      }`}
                   >
                     {st.label}
                   </button>
@@ -586,11 +595,10 @@ export default function StudentPortalClient({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`relative flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition ${
-                  isActive
+                className={`relative flex min-h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-semibold transition ${isActive
                     ? "text-chmsu-forest"
                     : "text-slate-500 hover:text-chmsu-forest"
-                }`}
+                  }`}
               >
                 {isActive && (
                   <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-chmsu-green" />

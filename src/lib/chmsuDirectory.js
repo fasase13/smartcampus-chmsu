@@ -254,3 +254,43 @@ export function matchesDestinationOffice(staffMember, selectedDestinationOffice)
 
   return false;
 }
+
+/**
+ * Role-connected CHMSU Job Title options for Step 3 Registration (/register/complete).
+ * Only applies to non-student self-registration roles: faculty, staff, rmo.
+ */
+export const JOB_TITLES_BY_ROLE = {
+  faculty: [
+    "Dean",
+    "Associate Dean",
+    "Department / Program Chairperson",
+    "Instructor I",
+    "Instructor II",
+    "Instructor III",
+    "Assistant Professor",
+    "Associate Professor",
+    "Professor",
+    "Part-Time / Visiting Instructor",
+  ],
+  staff: [
+    "Administrative Officer",
+    "Administrative Assistant",
+    "Administrative Aide",
+    "Office Clerk / Secretary",
+    "Registrar Staff",
+    "Accounting / Finance Clerk",
+    "Human Resource Staff",
+    "IT / System Support Staff",
+    "Librarian",
+    "Guidance Counselor",
+    "Laboratory Technician",
+    "Student Affairs Staff",
+  ],
+  rmo: [
+    "University Records Officer",
+    "Campus Records Management Officer",
+    "Records Officer",
+    "Document Controller / Receiving Clerk",
+    "Archivist",
+  ],
+};

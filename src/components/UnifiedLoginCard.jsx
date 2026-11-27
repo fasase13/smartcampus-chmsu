@@ -143,7 +143,14 @@ export default function UnifiedLoginCard() {
         return;
       }
 
-      // 3. Route automatically based on verified database record (campus + role)
+      // 3. Institutional Management ALWAYS lands on /management (ignore campus ?next= params)
+      if (payload.role === "management") {
+        router.push("/management");
+        router.refresh();
+        return;
+      }
+
+      // 4. Route automatically based on verified database record (campus + role)
       const isSafeNext =
         nextParam &&
         nextParam.startsWith("/") &&

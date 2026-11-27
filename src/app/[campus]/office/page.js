@@ -3,10 +3,11 @@ import { getAuthenticatedProfile } from "@/lib/supabase/server";
 import {
   CROSS_CAMPUS_ROLES,
   PORTAL_ROLE_ACCESS,
+  ROLES,
   getDefaultRouteForRole,
 } from "@/lib/constants";
 import PortalShell from "@/components/PortalShell";
-import OfficeScannerClient from "@/components/OfficeScannerClient";
+import MyDocumentsClient from "@/components/MyDocumentsClient";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,14 @@ export default async function OfficeScannerPage({ params }) {
 
   if (!profile.is_active || profile.approval_status !== "approved") {
     redirect("/pending-approval");
+  }
+
+  if (profile.role === ROLES.MANAGEMENT) {
+    redirect("/management");
+  }
+
+  if (profile.role === "dept_head") {
+    redirect(`/${campusSlug}/faculty`);
   }
 
   if (!PORTAL_ROLE_ACCESS.office.includes(profile.role)) {
@@ -82,11 +91,10 @@ export default async function OfficeScannerPage({ params }) {
       campus={campus}
       allCampuses={allCampusesRes.data ?? []}
     >
-      <OfficeScannerClient
+      <MyDocumentsClient
         profile={profile}
         campus={campus}
         allCampuses={allCampusesRes.data ?? []}
-        staffDirectory={staffRes.data ?? []}
         initialDocuments={documentsRes.data ?? []}
       />
     </PortalShell>

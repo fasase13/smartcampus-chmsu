@@ -3,6 +3,7 @@ import { getAuthenticatedProfile } from "@/lib/supabase/server";
 import {
   CROSS_CAMPUS_ROLES,
   PORTAL_ROLE_ACCESS,
+  ROLES,
   getDefaultRouteForRole,
 } from "@/lib/constants";
 import RmoPortalClient from "@/components/RmoPortalClient";
@@ -15,11 +16,13 @@ export default async function RmoPortalPage({ params, searchParams }) {
   const rawTab = resolvedSearchParams?.tab;
   const initialTab =
     rawTab === "intake" ||
-    rawTab === "queue" ||
+    rawTab === "documents" ||
     rawTab === "announcements" ||
     rawTab === "profile"
       ? rawTab
-      : "intake";
+      : rawTab === "queue"
+        ? "documents"
+        : "intake";
 
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
@@ -33,6 +36,10 @@ export default async function RmoPortalPage({ params, searchParams }) {
 
   if (!profile.is_active || profile.approval_status !== "approved") {
     redirect("/pending-approval");
+  }
+
+  if (profile.role === ROLES.MANAGEMENT) {
+    redirect("/management");
   }
 
   if (!PORTAL_ROLE_ACCESS.rmo.includes(profile.role)) {

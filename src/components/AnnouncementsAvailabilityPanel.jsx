@@ -59,6 +59,7 @@ export default function AnnouncementsAvailabilityPanel({
   initialAnnouncements = [],
 }) {
   const canPublishUniversityWide = CROSS_CAMPUS_ROLES.includes(profile.role);
+  const isTeaching = Boolean(profile?.is_teaching);
 
   // Live Availability state
   const [availabilityStatus, setAvailabilityStatus] = useState(
@@ -133,6 +134,7 @@ export default function AnnouncementsAvailabilityPanel({
   }, [campus.slug, profile.id, refreshAnnouncements]);
 
   async function updateAvailability(overrides = {}) {
+    if (!isTeaching) return;
     setSavingAvailability(true);
     setFeedback(null);
 
@@ -422,22 +424,25 @@ export default function AnnouncementsAvailabilityPanel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-chmsu-forest">
-            Announcements &amp; Availability
+            {isTeaching ? "Announcements & Availability" : "Manage Announcements"}
           </h1>
           <p className="mt-0.5 text-sm text-slate-600">
-            Manage your real-time office availability and publish notices for
-            CHMSU {campus.name}.
+            {isTeaching
+              ? `Manage your real-time office availability and publish notices for CHMSU ${campus.name}.`
+              : `Publish campus notices, calendar events, or advisories for CHMSU ${campus.name}.`}
           </p>
         </div>
 
-        <span
-          className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
-        >
+        {isTeaching && (
           <span
-            className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
-          />
-          Status: {currentStatusMeta.label}
-        </span>
+            className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
+          >
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
+            />
+            Status: {currentStatusMeta.label}
+          </span>
+        )}
       </div>
 
       {/* Feedback */}
@@ -469,9 +474,10 @@ export default function AnnouncementsAvailabilityPanel({
         </div>
       )}
 
-      {/* Side-by-Side Grid: Live Availability + Announcement Composer */}
+      {/* Side-by-Side Grid (or Full-Width Announcement Composer when non-teaching) */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        {/* Live Availability Control */}
+        {/* Live Availability Control (Teaching Personnel Only) */}
+        {isTeaching && (
         <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-5">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -581,9 +587,14 @@ export default function AnnouncementsAvailabilityPanel({
             </button>
           </div>
         </section>
+        )}
 
         {/* Announcement Composer */}
-        <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-7">
+        <section
+          className={`rounded-2xl border border-chmsu-border bg-white p-5 ${
+            isTeaching ? "xl:col-span-7" : "xl:col-span-12"
+          }`}
+        >
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">

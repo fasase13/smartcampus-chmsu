@@ -3,7 +3,7 @@
 import { QRCodeSVG } from "qrcode.react";
 import Image from "next/image";
 import { Printer, X, Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function formatDate(isoString) {
   if (!isoString) return "—";
@@ -18,6 +18,18 @@ function formatDate(isoString) {
 
 export default function QrSlipModal({ doc, campusMap, onClose }) {
   const [copied, setCopied] = useState(false);
+
+  // Allow closing with the Escape key
+  useEffect(() => {
+    if (!doc) return;
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        onClose?.();
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [doc, onClose]);
 
   if (!doc) return null;
 
@@ -45,11 +57,14 @@ export default function QrSlipModal({ doc, campusMap, onClose }) {
       role="dialog"
       aria-modal="true"
       aria-label="Printable QR Routing Slip"
-      className="qr-slip-print-root fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose?.();
+      }}
+      className="qr-slip-print-root fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs print:static print:bg-transparent print:p-0"
     >
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-xl print:max-w-none print:rounded-none print:border-slate-400 print:shadow-none">
-        {/* Modal Toolbar (hidden on print) */}
-        <div className="no-print flex items-center justify-between border-b border-chmsu-border bg-chmsu-canvas px-5 py-3">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-xl print:max-h-none print:max-w-none print:overflow-visible print:rounded-none print:border-slate-400 print:shadow-none">
+        {/* Sticky Modal Toolbar with prominent top-right X button (hidden on print) */}
+        <div className="no-print print:hidden flex shrink-0 items-center justify-between gap-2 border-b border-chmsu-border bg-chmsu-canvas px-5 py-3">
           <p className="text-sm font-bold text-chmsu-forest">
             Printable QR Routing Slip
           </p>
@@ -81,17 +96,18 @@ export default function QrSlipModal({ doc, campusMap, onClose }) {
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => onClose?.()}
               aria-label="Close modal"
-              className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-800"
+              title="Close (Esc)"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-chmsu-border bg-white text-slate-600 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        {/* Printable Routing Slip Body */}
-        <div className="p-6">
+        {/* Scrollable Printable Routing Slip Body */}
+        <div className="overflow-y-auto p-6 print:overflow-visible">
           {/* Header with CHMSU Seal */}
           <div className="flex items-center justify-between gap-3 border-b-2 border-chmsu-forest pb-4">
             <div className="flex items-center gap-3">
@@ -141,7 +157,7 @@ export default function QrSlipModal({ doc, campusMap, onClose }) {
               {doc.tracking_code}
             </p>
             <p className="mt-0.5 text-[11px] text-slate-500">
-              Scan with SmartCampus Office QR Scanner or enter Tracking Code manually
+              Scan with SmartCampus QR Document Tracker or enter Tracking Code manually
             </p>
           </div>
 
@@ -193,7 +209,9 @@ export default function QrSlipModal({ doc, campusMap, onClose }) {
               <dd className="mt-0.5 font-semibold text-chmsu-navy">
                 CHMSU {currentName}
               </dd>
-              <dd className="text-[11px] text-slate-600">{doc.current_office}</dd>
+              <dd className="text-[11px] text-slate-600">
+                {doc.current_office}
+              </dd>
             </div>
           </dl>
 
@@ -201,6 +219,25 @@ export default function QrSlipModal({ doc, campusMap, onClose }) {
             RA 10173 Notice: QR code encodes an opaque system token only. Attach
             this slip securely to the physical document folder.
           </p>
+        </div>
+
+        {/* Sticky Footer Actions (hidden on print) */}
+        <div className="no-print print:hidden flex shrink-0 items-center justify-end gap-2 border-t border-chmsu-border bg-chmsu-canvas px-5 py-3">
+          <button
+            type="button"
+            onClick={() => onClose?.()}
+            className="rounded-lg border border-chmsu-border bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-chmsu-forest px-4 py-1.5 text-xs font-semibold text-white hover:bg-chmsu-green"
+          >
+            <Printer className="h-3.5 w-3.5" />
+            Print Slip
+          </button>
         </div>
       </div>
     </div>

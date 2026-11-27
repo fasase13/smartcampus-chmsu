@@ -313,7 +313,7 @@ export async function updateSession(request) {
       return redirectWithCookies(pendingUrl, supabaseResponse);
     }
 
-    if (!CROSS_CAMPUS_ROLES.includes(profile.role)) {
+    if (profile.role !== ROLES.MANAGEMENT) {
       const userCampusSlug = profile.campuses?.slug ?? "talisay";
       const unauthorizedUrl = request.nextUrl.clone();
       unauthorizedUrl.pathname = getDefaultRouteForRole(
@@ -371,6 +371,14 @@ export async function updateSession(request) {
     pendingUrl.pathname = "/pending-approval";
     pendingUrl.search = "";
     return redirectWithCookies(pendingUrl, supabaseResponse);
+  }
+
+  // Strict portal isolation: Institutional Management ONLY accesses /management
+  if (profile.role === ROLES.MANAGEMENT) {
+    const mgmtUrl = request.nextUrl.clone();
+    mgmtUrl.pathname = "/management";
+    mgmtUrl.search = "";
+    return redirectWithCookies(mgmtUrl, supabaseResponse);
   }
 
   const userCampusSlug = profile.campuses?.slug ?? campusSlug;

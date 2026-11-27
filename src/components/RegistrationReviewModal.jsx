@@ -21,6 +21,7 @@ export const RETURNABLE_FIELD_OPTIONS = [
   { key: "department", label: "College / Department" },
   { key: "program_or_office", label: "Program / Office" },
   { key: "job_title", label: "Job Title", nonStudentOnly: true },
+  { key: "is_teaching", label: "Teaches Classes", nonStudentOnly: true },
   { key: "id_photos", label: "School ID Photos" },
 ];
 
@@ -261,12 +262,22 @@ export default function RegistrationReviewModal({
                   </dd>
                 </div>
                 {!isStudent && (
-                  <div>
-                    <dt className="font-semibold text-slate-500">Job Title</dt>
-                    <dd className="mt-0.5 font-semibold text-slate-900">
-                      {user.job_title || "—"}
-                    </dd>
-                  </div>
+                  <>
+                    <div>
+                      <dt className="font-semibold text-slate-500">Job Title</dt>
+                      <dd className="mt-0.5 font-semibold text-slate-900">
+                        {user.job_title || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="font-semibold text-slate-500">
+                        Teaches Classes
+                      </dt>
+                      <dd className="mt-0.5 font-semibold text-slate-900">
+                        {user.is_teaching ? "Yes" : "No"}
+                      </dd>
+                    </div>
+                  </>
                 )}
                 <div>
                   <dt className="font-semibold text-slate-500">

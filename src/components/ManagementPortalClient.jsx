@@ -20,17 +20,16 @@ import {
   CreditCard,
   Download,
   Eye,
-  FilePlus2,
   FileSpreadsheet,
   FileText,
   Loader2,
   LogOut,
   Printer,
+  QrCode,
   RefreshCw,
   Search,
   ShieldAlert,
   UserCheck,
-  UserCircle,
   Users,
   X,
   XCircle,
@@ -38,7 +37,9 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
-import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
+import ManagementQrTrackerPanel from "@/components/ManagementQrTrackerPanel";
+import LiveNotificationBell from "@/components/LiveNotificationBell";
+import HeaderAccountMenu from "@/components/HeaderAccountMenu";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -106,6 +107,23 @@ function downloadCsvFile(filename, headers, rows) {
 
 const AUDIT_PAGE_SIZE = 25;
 
+const DOCUMENT_LOG_ENTITY_TYPES = new Set([
+  "document",
+  "document_route",
+  "documents",
+  "document_routes",
+]);
+
+function isDocumentAuditLog(log) {
+  const entity = String(log?.entity_type ?? "").toLowerCase();
+  const action = String(log?.action ?? "").toLowerCase();
+  return (
+    DOCUMENT_LOG_ENTITY_TYPES.has(entity) ||
+    action.startsWith("document") ||
+    action.includes("sla")
+  );
+}
+
 export default function ManagementPortalClient({
   profile,
   campuses,
@@ -122,12 +140,27 @@ export default function ManagementPortalClient({
     [campuses]
   );
 
+  // Strictly locked to the Institutional Management user's assigned campus
+  const assignedCampus =
+    campusMap[profile?.campus_id] ??
+    profile?.campuses ??
+    campuses[0] ??
+    null;
+  const assignedCampusId = profile?.campus_id ?? assignedCampus?.id ?? "";
+
   // Navigation & Global Controls
   const [activeTab, setActiveTab] = useState("overview");
-  const [selectedCampusId, setSelectedCampusId] = useState("all");
+  const [trackerCameraActive, setTrackerCameraActive] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
     usePortalSidebarState();
+
+  function handleSelectTab(nextTab) {
+    if (nextTab !== "tracker") {
+      setTrackerCameraActive(false);
+    }
+    setActiveTab(nextTab);
+  }
 
   // Core Data States
   const [documents, setDocuments] = useState(initialDocuments);
@@ -184,10 +217,8 @@ export default function ManagementPortalClient({
   const [submittingReview, setSubmittingReview] = useState(false);
   const [zoomedPhoto, setZoomedPhoto] = useState(null);
 
-  // Tab D: Audit Logs Viewer
-  const [auditCampusFilter, setAuditCampusFilter] = useState("all");
+  // Tab D: Document Logs Viewer (locked to assigned campus)
   const [auditRoleFilter, setAuditRoleFilter] = useState("all");
-  const [auditEntityFilter, setAuditEntityFilter] = useState("all");
   const [auditActionQuery, setAuditActionQuery] = useState("");
   const [auditDateFrom, setAuditDateFrom] = useState("");
   const [auditDateTo, setAuditDateTo] = useState("");
@@ -197,27 +228,40 @@ export default function ManagementPortalClient({
   // Refetch helpers
   const refreshDocuments = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    let query = supabase
       .from("documents")
       .select(
         "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
       )
       .order("created_at", { ascending: false })
       .limit(500);
+    if (assignedCampusId) {
+      query = query.or(
+        `origin_campus_id.eq.${assignedCampusId},current_campus_id.eq.${assignedCampusId}`
+      );
+    }
+    const { data } = await query;
     if (data) setDocuments(data);
-  }, []);
+  }, [assignedCampusId]);
 
   const refreshAuditLogs = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
+    let query = supabase
       .from("audit_logs")
       .select(
         "id, campus_id, actor_id, actor_role, action, entity_type, entity_id, metadata, created_at, actor:actor_id(full_name, email)"
       )
+      .or(
+        "entity_type.in.(document,document_route,documents,document_routes),action.ilike.document%,action.ilike.%sla%"
+      )
       .order("created_at", { ascending: false })
       .limit(400);
+    if (assignedCampusId) {
+      query = query.eq("campus_id", assignedCampusId);
+    }
+    const { data } = await query;
     if (data) setAuditLogs(data);
-  }, []);
+  }, [assignedCampusId]);
 
   const refreshUsers = useCallback(async () => {
     if (!isAdmin) return;
@@ -330,15 +374,15 @@ export default function ManagementPortalClient({
     };
   }, [isAdmin, profile.id, refreshDocuments, refreshUnreadAlerts, refreshUsers]);
 
-  // Campus-scoped documents
+  // Campus-scoped documents (strictly locked to assignedCampusId)
   const campusScopedDocs = useMemo(() => {
-    if (selectedCampusId === "all") return documents;
+    if (!assignedCampusId) return documents;
     return documents.filter(
       (d) =>
-        d.current_campus_id === selectedCampusId ||
-        d.origin_campus_id === selectedCampusId
+        d.current_campus_id === assignedCampusId ||
+        d.origin_campus_id === assignedCampusId
     );
-  }, [documents, selectedCampusId]);
+  }, [documents, assignedCampusId]);
 
   // Date-filtered documents for Tab B analytics & reports
   const reportScopedDocs = useMemo(() => {
@@ -379,16 +423,16 @@ export default function ManagementPortalClient({
       completedWithTime.length === 0
         ? 0
         : Math.round(
-            (completedWithTime.reduce((acc, d) => {
-              const days =
-                (new Date(d.completed_at).getTime() -
-                  new Date(d.created_at).getTime()) /
-                86400000;
-              return acc + Math.max(0, days);
-            }, 0) /
-              completedWithTime.length) *
-              10
-          ) / 10;
+          (completedWithTime.reduce((acc, d) => {
+            const days =
+              (new Date(d.completed_at).getTime() -
+                new Date(d.created_at).getTime()) /
+              86400000;
+            return acc + Math.max(0, days);
+          }, 0) /
+            completedWithTime.length) *
+          10
+        ) / 10;
 
     return {
       total,
@@ -411,27 +455,7 @@ export default function ManagementPortalClient({
       });
   }, [campusScopedDocs]);
 
-  // Analytics Breakdowns (Tab B)
-  const analyticsByCampus = useMemo(() => {
-    return campuses.map((c) => {
-      const docs = reportScopedDocs.filter((d) => d.current_campus_id === c.id);
-      const delayed = docs.filter(isDocOverdue).length;
-      const delayRate =
-        docs.length === 0 ? 0 : Math.round((delayed / docs.length) * 100);
-      return {
-        campus: c,
-        total: docs.length,
-        delayed,
-        delayRate,
-      };
-    });
-  }, [campuses, reportScopedDocs]);
-
-  const maxCampusVolume = useMemo(
-    () => Math.max(1, ...analyticsByCampus.map((c) => c.total)),
-    [analyticsByCampus]
-  );
-
+  // Analytics Breakdowns (Tab B — strictly scoped to assigned campus)
   const bottleneckOffices = useMemo(() => {
     const map = new Map();
     reportScopedDocs.forEach((doc) => {
@@ -537,10 +561,7 @@ export default function ManagementPortalClient({
 
   // Export Analytics CSV
   function handleExportReportCsv() {
-    const scopeSlug =
-      selectedCampusId === "all"
-        ? "university-wide"
-        : campusMap[selectedCampusId]?.slug ?? "campus";
+    const scopeSlug = assignedCampus?.slug ?? "campus";
     const today = new Date().toISOString().slice(0, 10);
 
     const headers = [
@@ -614,21 +635,21 @@ export default function ManagementPortalClient({
       const [frontRes, backRes] = await Promise.all([
         target.id_front_path
           ? supabase.storage
-              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-              .createSignedUrl(target.id_front_path, 300)
+            .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
+            .createSignedUrl(target.id_front_path, 300)
           : Promise.resolve({ data: null, error: null }),
         target.id_back_path
           ? supabase.storage
-              .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
-              .createSignedUrl(target.id_back_path, 300)
+            .from(STORAGE_BUCKETS.ID_VERIFICATIONS)
+            .createSignedUrl(target.id_back_path, 300)
           : Promise.resolve({ data: null, error: null }),
       ]);
 
       if (frontRes.error || backRes.error) {
         setIdPhotoError(
           frontRes.error?.message ||
-            backRes.error?.message ||
-            "Unable to load signed ID verification photos."
+          backRes.error?.message ||
+          "Unable to load signed ID verification photos."
         );
       }
 
@@ -803,7 +824,7 @@ export default function ManagementPortalClient({
     }
   }
 
-  // Tab D: Filtered Audit Logs + Pagination + CSV Export
+  // Tab D: Filtered Document Logs + Pagination + CSV Export
   const filteredAuditLogs = useMemo(() => {
     const q = auditActionQuery.trim().toLowerCase();
     const fromMs = auditDateFrom
@@ -814,15 +835,13 @@ export default function ManagementPortalClient({
       : Infinity;
 
     return auditLogs.filter((log) => {
-      const cMatch =
-        auditCampusFilter === "all" || log.campus_id === auditCampusFilter;
+      if (!isDocumentAuditLog(log)) return false;
+      if (assignedCampusId && log.campus_id !== assignedCampusId) return false;
       const rMatch =
         auditRoleFilter === "all" || log.actor_role === auditRoleFilter;
-      const eMatch =
-        auditEntityFilter === "all" || log.entity_type === auditEntityFilter;
       const t = new Date(log.created_at).getTime();
       const dMatch = t >= fromMs && t <= toMs;
-      if (!cMatch || !rMatch || !eMatch || !dMatch) return false;
+      if (!rMatch || !dMatch) return false;
       if (!q) return true;
       return (
         log.action?.toLowerCase().includes(q) ||
@@ -835,9 +854,8 @@ export default function ManagementPortalClient({
     });
   }, [
     auditLogs,
-    auditCampusFilter,
+    assignedCampusId,
     auditRoleFilter,
-    auditEntityFilter,
     auditActionQuery,
     auditDateFrom,
     auditDateTo,
@@ -875,7 +893,7 @@ export default function ManagementPortalClient({
       log.entity_id ?? "",
       JSON.stringify(log.metadata ?? {}),
     ]);
-    downloadCsvFile(`chmsu-audit-logs-${today}.csv`, headers, rows);
+    downloadCsvFile(`chmsu-document-logs-${today}.csv`, headers, rows);
   }
 
   async function handleSignOut() {
@@ -890,10 +908,9 @@ export default function ManagementPortalClient({
     }
   }
 
-  const scopeLabel =
-    selectedCampusId === "all"
-      ? "All 4 Campuses (University-Wide)"
-      : `CHMSU ${campusMap[selectedCampusId]?.name ?? "Campus"}`;
+  const scopeLabel = assignedCampus?.name
+    ? `CHMSU ${assignedCampus.name}`
+    : "CHMSU Campus";
 
   const navTabs = [
     {
@@ -904,22 +921,16 @@ export default function ManagementPortalClient({
       visible: true,
     },
     {
+      id: "tracker",
+      label: "QR Document Tracker",
+      icon: QrCode,
+      visible: true,
+    },
+    {
       id: "analytics",
       label: "Bottlenecks & Reports",
       icon: BarChart3,
       visible: true,
-    },
-    {
-      id: "send",
-      label: "Send / Register Document",
-      icon: FilePlus2,
-      visible: [
-        ROLES.FACULTY,
-        ROLES.STAFF,
-        ROLES.DEPT_HEAD,
-        ROLES.RMO,
-        ROLES.MANAGEMENT,
-      ].includes(profile?.role),
     },
     {
       id: "registrations",
@@ -936,14 +947,8 @@ export default function ManagementPortalClient({
     },
     {
       id: "audit",
-      label: "Immutable Audit Logs",
+      label: "Document Logs",
       icon: Activity,
-      visible: true,
-    },
-    {
-      id: "profile",
-      label: "My Profile",
-      icon: UserCircle,
       visible: true,
     },
   ].filter((t) => t.visible);
@@ -954,7 +959,7 @@ export default function ManagementPortalClient({
 
       <PortalSidebar
         title="SmartCampus CHMSU"
-        subtitle={isAdmin ? "Superadmin" : "Institutional Management"}
+        subtitle={scopeLabel}
         navItems={navTabs.map((t) => ({
           id: t.id,
           label: t.label,
@@ -962,9 +967,13 @@ export default function ManagementPortalClient({
           alertBadge: t.badge,
         }))}
         activeId={activeTab}
-        onSelect={setActiveTab}
+        onSelect={handleSelectTab}
         profile={profile}
-        roleBadge={ROLE_LABELS[profile.role] ?? profile.role}
+        roleBadge={
+          profile?.role === ROLES.MANAGEMENT
+            ? "Institutional Management"
+            : ROLE_LABELS[profile.role] ?? profile.role
+        }
         onSignOut={handleSignOut}
         signingOut={signingOut}
         collapsed={collapsed}
@@ -976,35 +985,24 @@ export default function ManagementPortalClient({
 
       {/* Main Content Area */}
       <div
-        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${
-          collapsed ? "lg:pl-20" : "lg:pl-64"
-        }`}
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${collapsed ? "lg:pl-20" : "lg:pl-64"
+          }`}
       >
         {/* Top Action Bar (hidden on print) */}
         <header className="no-print sticky top-0 z-20 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex min-w-0 items-center gap-3">
               <SidebarToggleButton onClick={toggleSidebar} />
-              <label
-                htmlFor="mgmt_campus_scope"
-                className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500"
-              >
-                <Building2 className="h-4 w-4 text-chmsu-green" />
-                Scope:
-              </label>
-              <select
-                id="mgmt_campus_scope"
-                value={selectedCampusId}
-                onChange={(e) => setSelectedCampusId(e.target.value)}
-                className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-3 py-2 text-sm font-semibold text-chmsu-forest outline-none focus:border-chmsu-green"
-              >
-                <option value="all">All 4 Campuses (University-Wide)</option>
-                {campuses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    CHMSU {c.name}
-                  </option>
-                ))}
-              </select>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-bold text-chmsu-forest">
+                    {scopeLabel}
+                  </span>
+                  <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
+                    Institutional Management
+                  </span>
+                </div>
+              </div>
             </div>
 
             <div className="flex items-center gap-2.5">
@@ -1029,16 +1027,19 @@ export default function ManagementPortalClient({
                 Run SLA Delay Check
               </button>
 
-              <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-slate-900">
-                  {profile?.full_name}
-                </p>
-                <p className="text-xs text-slate-500">
-                  {profile?.role === ROLES.SUPERADMIN
-                    ? "System Admin"
-                    : ROLE_LABELS[profile?.role] ?? profile?.role}
-                </p>
-              </div>
+              <LiveNotificationBell
+                userId={profile?.id}
+                onNavigate={(item) => {
+                  if (item.type === "delay_alert") handleSelectTab("overview");
+                  else handleSelectTab("audit");
+                }}
+              />
+
+              <HeaderAccountMenu
+                onOpenProfile={() => handleSelectTab("profile")}
+                onSignOut={handleSignOut}
+                signingOut={signingOut}
+              />
 
               <button
                 type="button"
@@ -1055,27 +1056,15 @@ export default function ManagementPortalClient({
 
         {/* Main Workspace */}
         <main className="w-full flex-1 space-y-6 px-4 py-5 sm:px-6">
-          {/* TAB: SEND / REGISTER DOCUMENT (Strictly non-admin management/staff roles) */}
-          {activeTab === "send" &&
-            [
-              ROLES.FACULTY,
-              ROLES.STAFF,
-              ROLES.DEPT_HEAD,
-              ROLES.RMO,
-              ROLES.MANAGEMENT,
-            ].includes(profile?.role) && (
-              <DocumentRegisterPanel
-                profile={profile}
-                campus={
-                  campuses.find((c) => c.id === profile?.campus_id) ??
-                  campuses.find((c) => c.is_main) ??
-                  campuses[0]
-                }
-                allCampuses={campuses}
-                onDocumentRegistered={refreshDocuments}
-                showPageHeader
-              />
-            )}
+          {/* TAB: QR DOCUMENT TRACKER (Strictly Read-Only Campus Oversight) */}
+          {activeTab === "tracker" && (
+            <ManagementQrTrackerPanel
+              campusMap={campusMap}
+              campusName={assignedCampus?.name}
+              controlledCameraActive={trackerCameraActive}
+              onCameraActiveChange={setTrackerCameraActive}
+            />
+          )}
 
           {/* Print-Only Institutional Report Header */}
           <div className="hidden border-b-2 border-chmsu-forest pb-4 print:block">
@@ -1097,8 +1086,10 @@ export default function ManagementPortalClient({
                   </h1>
                   <p className="text-xs text-slate-600">
                     Scope: {scopeLabel} &bull; Generated:{" "}
-                    {formatDateTime(new Date().toISOString())} by{" "}
-                    {profile.full_name}
+                    <span suppressHydrationWarning>
+                      {nowMs ? formatDateTime(new Date(nowMs).toISOString()) : "—"}
+                    </span>{" "}
+                    by {profile.full_name}
                   </p>
                 </div>
               </div>
@@ -1109,13 +1100,12 @@ export default function ManagementPortalClient({
           {feedback && (
             <div
               role="status"
-              className={`no-print flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-                feedback.type === "error"
+              className={`no-print flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${feedback.type === "error"
                   ? "border-red-200 bg-red-50 text-red-800"
                   : feedback.type === "warning"
                     ? "border-red-300 bg-red-50 text-red-900"
                     : "border-emerald-200 bg-emerald-50 text-emerald-900"
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2.5">
                 {feedback.type === "success" ? (
@@ -1182,11 +1172,10 @@ export default function ManagementPortalClient({
                 </div>
 
                 <div
-                  className={`rounded-2xl border p-4 ${
-                    kpis.overdueCount > 0
+                  className={`rounded-2xl border p-4 ${kpis.overdueCount > 0
                       ? "border-red-300 bg-[#FEF2F2]"
                       : "border-chmsu-border bg-white"
-                  }`}
+                    }`}
                 >
                   <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#DC2626]">
                     <AlertTriangle className="h-3.5 w-3.5" />
@@ -1322,7 +1311,7 @@ export default function ManagementPortalClient({
               <div className="no-print flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h1 className="text-2xl font-bold text-chmsu-forest">
-                    Multi-Campus Bottleneck Analytics &amp; Reports
+                    Campus Bottleneck Analytics &amp; Reports
                   </h1>
                   <p className="text-sm text-slate-600">
                     Analyze document volume, delay rates, and office holding
@@ -1363,11 +1352,10 @@ export default function ManagementPortalClient({
                     key={p.id}
                     type="button"
                     onClick={() => setDatePreset(p.id)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                      datePreset === p.id
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${datePreset === p.id
                         ? "bg-chmsu-navy text-white"
                         : "border border-chmsu-border bg-chmsu-canvas text-slate-700"
-                    }`}
+                      }`}
                   >
                     {p.label}
                   </button>
@@ -1396,57 +1384,7 @@ export default function ManagementPortalClient({
                 </span>
               </div>
 
-              {/* 1. Campus Volume & Delay Rate Chart */}
-              <section className="rounded-2xl border border-chmsu-border bg-white p-5">
-                <h2 className="text-base font-bold text-chmsu-forest">
-                  Document Volume &amp; Delay Rate by Campus
-                </h2>
-                <div className="mt-4 space-y-4">
-                  {analyticsByCampus.map((row) => {
-                    const widthPct = Math.round(
-                      (row.total / maxCampusVolume) * 100
-                    );
-                    const delayedPctOfBar =
-                      row.total === 0
-                        ? 0
-                        : Math.round((row.delayed / row.total) * 100);
-                    return (
-                      <div key={row.campus.id} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs font-semibold">
-                          <span className="text-slate-900">
-                            CHMSU {row.campus.name} ({row.campus.code})
-                          </span>
-                          <span className="tabular-nums text-slate-600">
-                            {row.total} docs &bull;{" "}
-                            <span
-                              className={
-                                row.delayed > 0
-                                  ? "font-bold text-[#DC2626]"
-                                  : "text-chmsu-green"
-                              }
-                            >
-                              {row.delayed} delayed ({row.delayRate}%)
-                            </span>
-                          </span>
-                        </div>
-                        <div className="h-3.5 w-full overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className="flex h-full overflow-hidden rounded-full bg-chmsu-green transition-all"
-                            style={{ width: `${Math.max(widthPct, row.total > 0 ? 4 : 0)}%` }}
-                          >
-                            <div
-                              className="h-full bg-[#DC2626]"
-                              style={{ width: `${delayedPctOfBar}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {/* 2. Top Bottleneck Offices Table */}
+              {/* 1. Top Bottleneck Offices Table */}
               <section className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
                 <div className="border-b border-chmsu-border px-5 py-4">
                   <h2 className="text-base font-bold text-chmsu-forest">
@@ -1489,11 +1427,10 @@ export default function ManagementPortalClient({
                             </td>
                             <td className="px-4 py-3 text-right tabular-nums">
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                                  b.overdue > 0
+                                className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${b.overdue > 0
                                     ? "bg-red-100 text-[#DC2626]"
                                     : "bg-emerald-50 text-emerald-700"
-                                }`}
+                                  }`}
                               >
                                 {b.overdue}
                               </span>
@@ -1522,7 +1459,7 @@ export default function ManagementPortalClient({
                       breakdownByType.map((item) => {
                         const pct = Math.round(
                           (item.count / Math.max(1, reportScopedDocs.length)) *
-                            100
+                          100
                         );
                         return (
                           <div key={item.type} className="space-y-1">
@@ -1556,7 +1493,7 @@ export default function ManagementPortalClient({
                       breakdownByStatus.map((item) => {
                         const pct = Math.round(
                           (item.count / Math.max(1, reportScopedDocs.length)) *
-                            100
+                          100
                         );
                         const meta = DOCUMENT_STATUS_META[item.status] ?? {
                           label: item.status,
@@ -1573,13 +1510,12 @@ export default function ManagementPortalClient({
                             </div>
                             <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
                               <div
-                                className={`h-full rounded-full ${
-                                  item.status === "delayed"
+                                className={`h-full rounded-full ${item.status === "delayed"
                                     ? "bg-[#DC2626]"
                                     : item.status === "completed"
                                       ? "bg-chmsu-green"
                                       : "bg-chmsu-gold"
-                                }`}
+                                  }`}
                                 style={{ width: `${pct}%` }}
                               />
                             </div>
@@ -1796,11 +1732,10 @@ export default function ManagementPortalClient({
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1.5">
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                  u.is_active
+                                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${u.is_active
                                     ? "bg-emerald-100 text-emerald-800"
                                     : "bg-red-100 text-red-800"
-                                }`}
+                                  }`}
                               >
                                 {u.is_active ? "Active" : "Inactive"}
                               </span>
@@ -1830,18 +1765,19 @@ export default function ManagementPortalClient({
           )}
 
           {/* ============================================================== */}
-          {/* TAB D: IMMUTABLE AUDIT LOGS VIEWER                             */}
+          {/* TAB D: DOCUMENT LOGS VIEWER (Read-Only Document History)       */}
           {/* ============================================================== */}
           {activeTab === "audit" && (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h1 className="text-2xl font-bold text-chmsu-forest">
-                    Immutable Audit Logs (RA 10173 Accountability)
+                    Document Logs
                   </h1>
                   <p className="text-sm text-slate-600">
-                    Append-only system trail protected by database-level
-                    immutability triggers.
+                    Read-only tracking history of document registrations,
+                    custody handoffs, status updates, and SLA alerts for{" "}
+                    {scopeLabel}.
                   </p>
                 </div>
 
@@ -1851,12 +1787,12 @@ export default function ManagementPortalClient({
                   className="inline-flex items-center gap-1.5 rounded-xl border border-chmsu-forest bg-white px-3.5 py-2 text-xs font-bold text-chmsu-forest transition hover:bg-chmsu-green/10"
                 >
                   <FileSpreadsheet className="h-4 w-4 text-chmsu-green" />
-                  Export Audit Logs CSV
+                  Export Document Logs CSV
                 </button>
               </div>
 
-              {/* Filters */}
-              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-2 lg:grid-cols-6">
+              {/* Filters (Campus locked to assignedCampusId) */}
+              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
                 <input
                   type="search"
                   value={auditActionQuery}
@@ -1864,25 +1800,9 @@ export default function ManagementPortalClient({
                     setAuditActionQuery(e.target.value);
                     setAuditPage(1);
                   }}
-                  placeholder="Filter action or actor..."
+                  placeholder="Search tracking code, action, or actor..."
                   className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-3 py-2 text-xs outline-none focus:border-chmsu-green focus:bg-white lg:col-span-2"
                 />
-
-                <select
-                  value={auditCampusFilter}
-                  onChange={(e) => {
-                    setAuditCampusFilter(e.target.value);
-                    setAuditPage(1);
-                  }}
-                  className="rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs font-semibold text-slate-700"
-                >
-                  <option value="all">All Campuses</option>
-                  {campuses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
 
                 <select
                   value={auditRoleFilter}
@@ -1898,21 +1818,6 @@ export default function ManagementPortalClient({
                       {ROLE_LABELS[r] ?? r}
                     </option>
                   ))}
-                </select>
-
-                <select
-                  value={auditEntityFilter}
-                  onChange={(e) => {
-                    setAuditEntityFilter(e.target.value);
-                    setAuditPage(1);
-                  }}
-                  className="rounded-xl border border-chmsu-border bg-white px-2.5 py-2 text-xs font-semibold text-slate-700"
-                >
-                  <option value="all">All Entities</option>
-                  <option value="document">document</option>
-                  <option value="announcement">announcement</option>
-                  <option value="profile">profile</option>
-                  <option value="system">system</option>
                 </select>
 
                 <div className="flex gap-1.5">
@@ -1939,11 +1844,11 @@ export default function ManagementPortalClient({
                 </div>
               </div>
 
-              {/* Audit Table */}
+              {/* Document Logs Table */}
               <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
                 {pagedAuditLogs.length === 0 ? (
                   <p className="p-8 text-center text-sm text-slate-500">
-                    No audit log entries match your filters.
+                    No document log entries match your filters.
                   </p>
                 ) : (
                   <div className="divide-y divide-chmsu-border">
@@ -2051,7 +1956,9 @@ export default function ManagementPortalClient({
           )}
 
           {/* MY PROFILE */}
-          {activeTab === "profile" && <UserProfileView profile={profile} />}
+          {activeTab === "profile" && (
+            <UserProfileView profile={profile} campus={assignedCampus} />
+          )}
         </main>
       </div>
 
@@ -2113,11 +2020,10 @@ export default function ManagementPortalClient({
                     {inspectRoutes.map((step) => (
                       <li key={step.id} className="relative text-sm">
                         <span
-                          className={`absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-white ${
-                            step.action === "delay_flagged"
+                          className={`absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-white ${step.action === "delay_flagged"
                               ? "bg-[#DC2626]"
                               : "bg-chmsu-forest"
-                          }`}
+                            }`}
                         />
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-bold text-slate-900">

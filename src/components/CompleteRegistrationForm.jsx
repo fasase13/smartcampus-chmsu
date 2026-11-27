@@ -28,6 +28,7 @@ import {
   STORAGE_BUCKETS,
 } from "@/lib/constants";
 import {
+  JOB_TITLES_BY_ROLE,
   getDepartmentsForCampusAndRole,
   getSubOptionsForSelection,
 } from "@/lib/chmsuDirectory";
@@ -43,6 +44,7 @@ const FIELD_LABELS = {
   department: "College / Department",
   program_or_office: "Program / Office",
   job_title: "Job Title",
+  is_teaching: "Teaches Classes",
   id_photos: "School ID Photos",
 };
 
@@ -137,6 +139,16 @@ export default function CompleteRegistrationForm({
   const [jobTitle, setJobTitle] = useState(
     isReturned && !isFlagged("job_title") ? profile?.job_title ?? "" : ""
   );
+  const [isTeaching, setIsTeaching] = useState(
+    isReturned &&
+      !isFlagged("is_teaching") &&
+      profile?.requested_role !== "student" &&
+      typeof profile?.is_teaching === "boolean"
+      ? profile.is_teaching
+        ? "yes"
+        : "no"
+      : ""
+  );
 
   // Existing valid photo paths retained if id_photos was NOT flagged
   const canReuseExistingPhotos =
@@ -169,6 +181,10 @@ export default function CompleteRegistrationForm({
   const subOptions =
     selectedCampusSlug && requestedRole && department
       ? getSubOptionsForSelection(selectedCampusSlug, requestedRole, department)
+      : [];
+  const jobTitleOptions =
+    requestedRole && !isStudentRole
+      ? JOB_TITLES_BY_ROLE[requestedRole] ?? []
       : [];
 
   // Inline duplicate-invalid-value checks against returned_snapshot
@@ -222,6 +238,13 @@ export default function CompleteRegistrationForm({
       snapshot?.job_title &&
       jobTitle.trim().toLowerCase() ===
         String(snapshot.job_title).trim().toLowerCase()
+  );
+  const isTeachingDuplicate = Boolean(
+    isFlagged("is_teaching") &&
+      !isStudentRole &&
+      typeof snapshot?.is_teaching === "boolean" &&
+      isTeaching !== "" &&
+      (isTeaching === "yes") === snapshot.is_teaching
   );
 
   useEffect(() => {
@@ -302,7 +325,8 @@ export default function CompleteRegistrationForm({
       isRoleDuplicate ||
       isDeptDuplicate ||
       isSubDuplicate ||
-      isJobTitleDuplicate
+      isJobTitleDuplicate ||
+      isTeachingDuplicate
     ) {
       setErrorMessage(
         "One or more flagged fields still contain the previous invalid value. Please correct all highlighted fields before resubmitting."
@@ -338,8 +362,17 @@ export default function CompleteRegistrationForm({
       setErrorMessage("Please select your Office.");
       return;
     }
-    if (!isStudentRole && !cleanJobTitle) {
-      setErrorMessage("Please enter your Job Title.");
+    if (
+      !isStudentRole &&
+      (!cleanJobTitle || !jobTitleOptions.includes(cleanJobTitle))
+    ) {
+      setErrorMessage("Please select a valid Job Title for your role.");
+      return;
+    }
+    if (!isStudentRole && isTeaching !== "yes" && isTeaching !== "no") {
+      setErrorMessage(
+        "Please answer whether you have a class to teach (Yes or No)."
+      );
       return;
     }
 
@@ -385,7 +418,7 @@ export default function CompleteRegistrationForm({
       }
 
       // 2. Upload replacement or new ID photos using unique timestamped paths
-      const ts = Date.now();
+      const ts = new Date().getTime();
       let finalFrontPath = profile?.id_front_path ?? "";
       let finalBackPath = profile?.id_back_path ?? "";
 
@@ -438,6 +471,7 @@ export default function CompleteRegistrationForm({
           p_program_or_course: isStudentRole ? cleanProgram : null,
           p_office_location: isStudentRole ? null : cleanOffice,
           p_job_title: isStudentRole ? null : cleanJobTitle,
+          p_is_teaching: isStudentRole ? false : isTeaching === "yes",
         }
       );
 
@@ -750,8 +784,9 @@ export default function CompleteRegistrationForm({
                     setDepartment("");
                     setProgramOrCourse("");
                     setOfficeLocation("");
+                    setJobTitle("");
                     if (nextRole === "student") {
-                      setJobTitle("");
+                      setIsTeaching("");
                     }
                   }}
                   className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
@@ -862,7 +897,7 @@ export default function CompleteRegistrationForm({
               </div>
             )}
 
-            {/* Required Job Title (Non-Student Roles Only) */}
+            {/* Required Role-Connected Job Title Dropdown (Non-Student Roles Only) */}
             {requestedRole && !isStudentRole && (
               <div>
                 <label
@@ -878,23 +913,91 @@ export default function CompleteRegistrationForm({
                 </label>
                 <div className="relative mt-1.5">
                   <Briefcase className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
+                  <select
                     id="job-title"
-                    type="text"
                     required
-                    maxLength={100}
                     value={jobTitle}
                     onChange={(e) => setJobTitle(e.target.value)}
-                    placeholder="e.g., Instructor I, Administrative Aide IV, Records Officer"
                     className={`w-full rounded-xl border py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
                       isFlagged("job_title"),
                       isJobTitleDuplicate
                     )}`}
-                  />
+                  >
+                    <option value="">Select your Job Title...</option>
+                    {jobTitleOptions.map((titleOption) => (
+                      <option key={titleOption} value={titleOption}>
+                        {titleOption}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {isJobTitleDuplicate && (
                   <p className="mt-1 text-xs font-semibold text-red-700">
                     {invalidDuplicateMsg}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Required Teaching Classes Selection (Non-Student Roles Only) */}
+            {requestedRole && !isStudentRole && (
+              <div>
+                <p className="block text-sm font-semibold text-slate-700">
+                  Do you have a class to teach?{" "}
+                  <span className="text-red-600">*</span>
+                  {isFlagged("is_teaching") && (
+                    <span className="ml-1.5 text-[11px] font-bold text-amber-700">
+                      (Needs correction)
+                    </span>
+                  )}
+                </p>
+                <div
+                  role="radiogroup"
+                  aria-label="Do you have a class to teach?"
+                  className="mt-1.5 grid grid-cols-2 gap-3"
+                >
+                  {[
+                    { value: "yes", label: "Yes" },
+                    { value: "no", label: "No" },
+                  ].map((opt) => {
+                    const selected = isTeaching === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setIsTeaching(opt.value)}
+                        className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
+                          selected
+                            ? "border-chmsu-forest bg-chmsu-forest text-white shadow-xs"
+                            : isTeachingDuplicate
+                              ? "border-red-400 bg-red-50/40 text-slate-700 hover:border-red-500"
+                              : isFlagged("is_teaching")
+                                ? "border-amber-400 bg-amber-50/40 text-slate-700 hover:border-amber-600"
+                                : "border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green hover:bg-chmsu-canvas"
+                        }`}
+                      >
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full border ${
+                            selected
+                              ? "border-white bg-chmsu-gold"
+                              : "border-slate-400 bg-white"
+                          }`}
+                        />
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {isTeachingDuplicate ? (
+                  <p className="mt-1 text-xs font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Select Yes if you teach students to enable Live Availability
+                    Control on the Campus Kiosk and Instructor Locator.
                   </p>
                 )}
               </div>

@@ -3,6 +3,7 @@ import { getAuthenticatedProfile } from "@/lib/supabase/server";
 import {
   CROSS_CAMPUS_ROLES,
   PORTAL_ROLE_ACCESS,
+  ROLES,
   getDefaultRouteForRole,
 } from "@/lib/constants";
 import StudentPortalClient from "@/components/StudentPortalClient";
@@ -27,6 +28,10 @@ export default async function StudentPortalPage({ params, searchParams }) {
 
   if (!profile.is_active || profile.approval_status !== "approved") {
     redirect("/pending-approval");
+  }
+
+  if (profile.role === ROLES.MANAGEMENT) {
+    redirect("/management");
   }
 
   // Server-side RBAC enforcement (defense-in-depth alongside proxy middleware)

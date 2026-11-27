@@ -26,13 +26,14 @@ import {
   ShieldAlert,
   Trash2,
   UserCheck,
-  UserCircle,
   Users,
   Wrench,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
+import LiveNotificationBell from "@/components/LiveNotificationBell";
+import HeaderAccountMenu from "@/components/HeaderAccountMenu";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -165,7 +166,7 @@ export default function SuperadminPortalClient({
   // Maintenance mode state
   const [maintMessageDraft, setMaintMessageDraft] = useState(
     initialSettings?.maintenance_message ??
-      "SmartCampus CHMSU is currently undergoing scheduled system maintenance. Please check back shortly."
+    "SmartCampus CHMSU is currently undergoing scheduled system maintenance. Please check back shortly."
   );
   const [confirmEnableMaint, setConfirmEnableMaint] = useState(false);
   const [savingMaint, setSavingMaint] = useState(false);
@@ -180,7 +181,7 @@ export default function SuperadminPortalClient({
     const { data } = await supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, is_teaching, show_on_kiosk, is_active, created_at"
       )
       .order("created_at", { ascending: false });
     if (data) setUsers(data);
@@ -343,16 +344,16 @@ export default function SuperadminPortalClient({
       completed.length === 0
         ? 0
         : Math.round(
-            (completed.reduce((acc, d) => {
-              const days =
-                (new Date(d.completed_at).getTime() -
-                  new Date(d.created_at).getTime()) /
-                86400000;
-              return acc + Math.max(0, days);
-            }, 0) /
-              completed.length) *
-              10
-          ) / 10;
+          (completed.reduce((acc, d) => {
+            const days =
+              (new Date(d.completed_at).getTime() -
+                new Date(d.created_at).getTime()) /
+              86400000;
+            return acc + Math.max(0, days);
+          }, 0) /
+            completed.length) *
+          10
+        ) / 10;
 
     return {
       total,
@@ -806,7 +807,6 @@ export default function SuperadminPortalClient({
       alertDot: settings?.maintenance_mode,
     },
     { id: "audit", label: "Audit Logs", icon: Activity },
-    { id: "profile", label: "My Profile", icon: UserCircle },
   ];
 
   return (
@@ -830,9 +830,8 @@ export default function SuperadminPortalClient({
 
       {/* Main Content */}
       <div
-        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 ${
-          collapsed ? "lg:pl-20" : "lg:pl-64"
-        }`}
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 ${collapsed ? "lg:pl-20" : "lg:pl-64"
+          }`}
       >
         <header className="sticky top-0 z-20 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
@@ -856,12 +855,27 @@ export default function SuperadminPortalClient({
                   Maintenance Mode Active
                 </span>
               )}
-              <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold text-slate-900">
-                  {profile?.full_name}
-                </p>
-                <p className="text-xs text-slate-500">System Admin</p>
-              </div>
+              <LiveNotificationBell
+                userId={profile?.id}
+                onNavigate={(item) => {
+                  if (item.type === "system") setActiveTab("registrations");
+                  else if (item.type === "announcement")
+                    setActiveTab("announcements");
+                  else setActiveTab("documents");
+                }}
+              />
+              <HeaderAccountMenu
+                onOpenProfile={() => {
+                  setActiveTab("profile");
+                  if (typeof window !== "undefined") {
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("tab", "profile");
+                    window.history.replaceState(null, "", url.toString());
+                  }
+                }}
+                onSignOut={handleSignOut}
+                signingOut={signingOut}
+              />
             </div>
           </div>
         </header>
@@ -870,13 +884,12 @@ export default function SuperadminPortalClient({
           {feedback && (
             <div
               role="status"
-              className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-                feedback.type === "error"
+              className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${feedback.type === "error"
                   ? "border-red-200 bg-red-50 text-red-800"
                   : feedback.type === "warning"
                     ? "border-amber-200 bg-amber-50 text-amber-900"
                     : "border-emerald-200 bg-emerald-50 text-emerald-900"
-              }`}
+                }`}
             >
               <span>{feedback.message}</span>
               <button
@@ -963,11 +976,10 @@ export default function SuperadminPortalClient({
                       </div>
                       <div className="rounded-xl border border-chmsu-border bg-white p-2.5">
                         <p
-                          className={`text-lg font-bold tabular-nums ${
-                            item.overdueDocs > 0
+                          className={`text-lg font-bold tabular-nums ${item.overdueDocs > 0
                               ? "text-red-700"
                               : "text-slate-800"
-                          }`}
+                            }`}
                         >
                           {item.docCount}
                         </p>
@@ -1051,9 +1063,8 @@ export default function SuperadminPortalClient({
                       {kpi.label}
                     </p>
                     <p
-                      className={`mt-1 text-2xl font-bold tabular-nums ${
-                        kpi.danger ? "text-red-600" : "text-chmsu-forest"
-                      }`}
+                      className={`mt-1 text-2xl font-bold tabular-nums ${kpi.danger ? "text-red-600" : "text-chmsu-forest"
+                        }`}
                     >
                       {kpi.value}
                     </p>
@@ -1245,11 +1256,10 @@ export default function SuperadminPortalClient({
                               </td>
                               <td className="px-4 py-3">
                                 <span
-                                  className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                                    overdue
+                                  className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${overdue
                                       ? "border-red-300 bg-red-100 text-red-900"
                                       : statusMeta.badgeClass
-                                  }`}
+                                    }`}
                                 >
                                   {overdue ? "Delayed" : statusMeta.label}
                                 </span>
@@ -1371,11 +1381,10 @@ export default function SuperadminPortalClient({
                           </td>
                           <td className="px-4 py-3">
                             <span
-                              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                                u.is_active
+                              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${u.is_active
                                   ? "bg-emerald-100 text-emerald-800"
                                   : "bg-red-100 text-red-800"
-                              }`}
+                                }`}
                             >
                               {u.is_active ? "Active" : "Deactivated"}
                             </span>
@@ -1825,11 +1834,10 @@ export default function SuperadminPortalClient({
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div
-                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${
-                        settings?.maintenance_mode
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${settings?.maintenance_mode
                           ? "bg-red-100 text-red-700"
                           : "bg-emerald-100 text-emerald-700"
-                      }`}
+                        }`}
                     >
                       <Wrench className="h-6 w-6" />
                     </div>
@@ -1838,11 +1846,10 @@ export default function SuperadminPortalClient({
                         Current Status
                       </p>
                       <p
-                        className={`text-lg font-bold ${
-                          settings?.maintenance_mode
+                        className={`text-lg font-bold ${settings?.maintenance_mode
                             ? "text-red-700"
                             : "text-emerald-700"
-                        }`}
+                          }`}
                       >
                         {settings?.maintenance_mode
                           ? "MAINTENANCE MODE ON"
@@ -2232,7 +2239,7 @@ export default function SuperadminPortalClient({
                 </div>
 
                 {selectedUser.role === ROLES.STUDENT ||
-                selectedUser.program_or_course ? (
+                  selectedUser.program_or_course ? (
                   <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                     <span className="text-xs font-semibold text-slate-500">
                       Program
@@ -2253,14 +2260,24 @@ export default function SuperadminPortalClient({
                 )}
 
                 {selectedUser.role !== ROLES.STUDENT && (
-                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Job Title
-                    </span>
-                    <span className="text-right text-xs font-medium text-slate-800">
-                      {selectedUser.job_title || "—"}
-                    </span>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <span className="text-xs font-semibold text-slate-500">
+                        Job Title
+                      </span>
+                      <span className="text-right text-xs font-medium text-slate-800">
+                        {selectedUser.job_title || "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <span className="text-xs font-semibold text-slate-500">
+                        Teaches Classes
+                      </span>
+                      <span className="text-right text-xs font-semibold text-slate-800">
+                        {selectedUser.is_teaching ? "Yes" : "No"}
+                      </span>
+                    </div>
+                  </>
                 )}
 
                 <div className="flex items-center justify-between gap-3 px-4 py-2.5">
@@ -2268,11 +2285,10 @@ export default function SuperadminPortalClient({
                     Account Status
                   </span>
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      selectedUser.is_active
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${selectedUser.is_active
                         ? "bg-emerald-100 text-emerald-800"
                         : "bg-red-100 text-red-800"
-                    }`}
+                      }`}
                   >
                     {selectedUser.is_active ? "Active" : "Deactivated"}
                   </span>

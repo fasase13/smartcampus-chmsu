@@ -39,7 +39,6 @@ export const ROLES = {
   SUPERADMIN: "superadmin",
   CAMPUS_ADMIN: "campus_admin",
   RMO: "rmo",
-  DEPT_HEAD: "dept_head",
   FACULTY: "faculty",
   STAFF: "staff",
   MANAGEMENT: "management",
@@ -54,18 +53,14 @@ export const SELF_REGISTER_ROLES = [
   ROLES.STUDENT,
   ROLES.FACULTY,
   ROLES.STAFF,
-  ROLES.DEPT_HEAD,
   ROLES.RMO,
-  ROLES.MANAGEMENT,
 ];
 
 export const CAMPUS_ADMIN_ASSIGNABLE_ROLES = [
   ROLES.STUDENT,
   ROLES.FACULTY,
   ROLES.STAFF,
-  ROLES.DEPT_HEAD,
   ROLES.RMO,
-  ROLES.MANAGEMENT,
 ];
 
 export const CROSS_CAMPUS_ROLES = [ROLES.SUPERADMIN, ROLES.MANAGEMENT];
@@ -74,7 +69,6 @@ export const ROLE_LABELS = {
   [ROLES.SUPERADMIN]: "Superadmin",
   [ROLES.CAMPUS_ADMIN]: "Campus Admin",
   [ROLES.RMO]: "Records Management Officer",
-  [ROLES.DEPT_HEAD]: "Department Head",
   [ROLES.FACULTY]: "Faculty",
   [ROLES.STAFF]: "Staff",
   [ROLES.MANAGEMENT]: "Institutional Management",
@@ -101,22 +95,18 @@ export const PORTAL_ROLE_ACCESS = {
   faculty: [
     ROLES.FACULTY,
     ROLES.STAFF,
-    ROLES.DEPT_HEAD,
     ROLES.RMO,
     ROLES.CAMPUS_ADMIN,
     ROLES.SUPERADMIN,
-    ROLES.MANAGEMENT,
   ],
-  student: [ROLES.STUDENT, ROLES.SUPERADMIN, ROLES.MANAGEMENT],
-  rmo: [ROLES.RMO, ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN, ROLES.MANAGEMENT],
+  student: [ROLES.STUDENT, ROLES.SUPERADMIN],
+  rmo: [ROLES.RMO, ROLES.CAMPUS_ADMIN, ROLES.SUPERADMIN],
   office: [
-    ROLES.DEPT_HEAD,
     ROLES.RMO,
     ROLES.FACULTY,
     ROLES.STAFF,
     ROLES.CAMPUS_ADMIN,
     ROLES.SUPERADMIN,
-    ROLES.MANAGEMENT,
   ],
 };
 
@@ -130,10 +120,9 @@ export function getDefaultRouteForRole(role, campusSlug) {
       return "/management";
     case ROLES.RMO:
       return `/${campusSlug}/rmo`;
-    case ROLES.DEPT_HEAD:
-      return `/${campusSlug}/office`;
     case ROLES.FACULTY:
     case ROLES.STAFF:
+    case "dept_head":
       return `/${campusSlug}/faculty`;
     case ROLES.STUDENT:
     default:

@@ -26,13 +26,11 @@ import {
 const DOCUMENT_REGISTER_ALLOWED_ROLES = [
   ROLES.FACULTY,
   ROLES.STAFF,
-  ROLES.DEPT_HEAD,
   ROLES.RMO,
-  ROLES.MANAGEMENT,
 ];
 
 const FORBIDDEN_REGISTER_MESSAGE =
-  "Administrators and students are not permitted to register or send documents.";
+  "Administrators, Institutional Management, and students are not permitted to register or send documents.";
 import {
   getAllDestinationOfficesForCampus,
   getDestinationOfficesForCampus,
