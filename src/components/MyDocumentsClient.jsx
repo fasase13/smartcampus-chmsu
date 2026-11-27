@@ -197,7 +197,7 @@ export default function MyDocumentsClient({
       const { data } = await supabase
         .from("document_routes")
         .select(
-          "id, campus_id, from_office, to_office, action, remarks, scanned_via_qr, created_at, actor:acted_by(full_name, role)"
+          "id, campus_id, from_office, to_office, from_user_id, to_user_id, acted_by, action, remarks, scanned_via_qr, created_at, actor:acted_by(full_name, role)"
         )
         .eq("document_id", docId)
         .order("created_at", { ascending: true });
@@ -272,14 +272,51 @@ export default function MyDocumentsClient({
     }
   }
 
+  const latestNonSystemRoute = useMemo(() => {
+    for (let i = activeRoutes.length - 1; i >= 0; i -= 1) {
+      if (activeRoutes[i]?.action !== "delay_flagged") {
+        return activeRoutes[i];
+      }
+    }
+    return null;
+  }, [activeRoutes]);
+
+  const isAlreadyReceived = Boolean(
+    activeDoc &&
+      !isProcessedStatus(activeDoc.status) &&
+      (activeDoc.status === "received" ||
+        activeDoc.status === "in_review" ||
+        (activeDoc.status === "delayed" &&
+          latestNonSystemRoute?.action === "received") ||
+        latestNonSystemRoute?.action === "received")
+  );
+
   async function executeCustodyAction(actionType) {
-    if (!activeDoc || !canMutateCustody) return;
+    if (!activeDoc || !canMutateCustody || acting) return;
 
     if (isProcessedStatus(activeDoc.status)) {
       setFeedback({
         type: "error",
         message:
           "Processed documents are permanently locked in records and cannot be edited or re-routed.",
+      });
+      return;
+    }
+
+    if (actionType === "received" && isAlreadyReceived) {
+      setFeedback({
+        type: "error",
+        message:
+          "This document has already been received. You may only Forward, Return, or Mark as Processed.",
+      });
+      return;
+    }
+
+    if (actionType !== "received" && !isAlreadyReceived) {
+      setFeedback({
+        type: "error",
+        message:
+          "You must receive this document first before forwarding, returning, or marking it as processed.",
       });
       return;
     }
@@ -400,17 +437,37 @@ export default function MyDocumentsClient({
           };
         }
       } else if (actionType === "returned") {
+        const previousHandoff = [...activeRoutes]
+          .reverse()
+          .find(
+            (r) =>
+              (r.action === "forwarded" || r.action === "registered") &&
+              r.acted_by &&
+              r.acted_by !== profile.id
+          );
+        const returnHolderId =
+          previousHandoff?.acted_by || activeDoc.created_by || null;
+        const returnOffice =
+          previousHandoff?.from_office ||
+          activeDoc.sender_office ||
+          "Originating Office";
+        const returnCampusId =
+          activeDoc.origin_campus_id || activeDoc.current_campus_id;
+
         docUpdate = {
           status: "action_required",
+          current_campus_id: returnCampusId,
+          current_office: returnOffice,
+          current_holder_id: returnHolderId,
         };
-        routePayload.to_office =
-          activeDoc.sender_office || "Originating Office";
-        routePayload.to_user_id = activeDoc.created_by;
+        routePayload.campus_id = returnCampusId;
+        routePayload.to_office = returnOffice;
+        routePayload.to_user_id = returnHolderId;
 
-        if (activeDoc.created_by && activeDoc.created_by !== profile.id) {
+        if (returnHolderId && returnHolderId !== profile.id) {
           notificationPayload = {
-            user_id: activeDoc.created_by,
-            campus_id: activeDoc.origin_campus_id,
+            user_id: returnHolderId,
+            campus_id: returnCampusId,
             document_id: activeDoc.id,
             type: "document_forwarded",
             title: `Action Required: ${activeDoc.tracking_code}`,
@@ -419,18 +476,15 @@ export default function MyDocumentsClient({
         }
       }
 
-      // When marking as Processed (completed), append the final custody route
-      // BEFORE locking documents.status = 'completed' so the DB immutability
-      // trigger on document_routes permanently locks the record immediately after.
-      if (actionType === "completed") {
-        const { error: routeError } = await supabase
-          .from("document_routes")
-          .insert(routePayload);
+      // Insert custody route FIRST so the PostgreSQL single-receive &
+      // processed-lock triggers validate the transition before documents mutates.
+      const { error: routeError } = await supabase
+        .from("document_routes")
+        .insert(routePayload);
 
-        if (routeError) {
-          setFeedback({ type: "error", message: routeError.message });
-          return;
-        }
+      if (routeError) {
+        setFeedback({ type: "error", message: routeError.message });
+        return;
       }
 
       const { data: updatedDoc, error: updateError } = await supabase
@@ -443,19 +497,6 @@ export default function MyDocumentsClient({
       if (updateError) {
         setFeedback({ type: "error", message: updateError.message });
         return;
-      }
-
-      if (actionType !== "completed") {
-        const { error: routeError } = await supabase
-          .from("document_routes")
-          .insert(routePayload);
-
-        if (routeError) {
-          setFeedback({
-            type: "error",
-            message: `Document updated, but route logging failed: ${routeError.message}`,
-          });
-        }
       }
 
       // Record immutable audit log
@@ -502,7 +543,7 @@ export default function MyDocumentsClient({
       documents.filter(
         (d) =>
           !isProcessedStatus(d.status) &&
-          (d.status === "registered" || d.status === "in_transit") &&
+          ["registered", "in_transit", "action_required"].includes(d.status) &&
           (d.current_holder_id === profile.id ||
             (d.current_holder_id === null && d.current_campus_id === campus?.id))
       ),
@@ -514,11 +555,10 @@ export default function MyDocumentsClient({
       documents.filter(
         (d) =>
           !isProcessedStatus(d.status) &&
-          ["received", "in_review", "action_required", "delayed"].includes(
-            d.status
-          )
+          ["received", "in_review", "delayed"].includes(d.status) &&
+          d.current_holder_id === profile.id
       ),
-    [documents]
+    [documents, profile.id]
   );
 
   const sentByMeDocs = useMemo(
@@ -562,16 +602,25 @@ export default function MyDocumentsClient({
     ? Math.max(1, Math.round((activeDoc.sla_hours / 24) * 10) / 10)
     : null;
 
-  const isCurrentCustodian = Boolean(
+  const canReceiveCurrentDoc = Boolean(
     activeDoc &&
       canMutateCustody &&
       !isDocLocked &&
+      !isAlreadyReceived &&
       (activeDoc.current_holder_id === profile.id ||
         (activeDoc.current_holder_id === null &&
-          activeDoc.current_campus_id === campus?.id) ||
-        (activeDoc.status === "action_required" &&
-          activeDoc.created_by === profile.id))
+          activeDoc.current_campus_id === campus?.id))
   );
+
+  const canActOnReceivedDoc = Boolean(
+    activeDoc &&
+      canMutateCustody &&
+      !isDocLocked &&
+      isAlreadyReceived &&
+      activeDoc.current_holder_id === profile.id
+  );
+
+  const isCurrentCustodian = canReceiveCurrentDoc || canActOnReceivedDoc;
 
   const bucketTabs = [
     {
@@ -909,7 +958,7 @@ export default function MyDocumentsClient({
                 </div>
               </div>
 
-              {/* Custody Action Controls (STRICTLY hidden when Processed / Locked) */}
+              {/* Custody Action Controls (STRICT single-receive state machine) */}
               {isCurrentCustodian && (
                 <div className="space-y-3 rounded-xl border border-chmsu-border bg-chmsu-canvas/50 p-4">
                   <div>
@@ -917,62 +966,88 @@ export default function MyDocumentsClient({
                       htmlFor="mydocs_custody_remarks"
                       className="block text-xs font-semibold uppercase tracking-wide text-slate-600"
                     >
-                      Action Remarks (Required for Return)
+                      {canReceiveCurrentDoc
+                        ? "Receipt Remarks (Optional)"
+                        : "Action Remarks (Required for Return)"}
                     </label>
                     <input
                       id="mydocs_custody_remarks"
                       type="text"
                       value={remarks}
                       onChange={(e) => setRemarks(e.target.value)}
-                      placeholder="Optional note for Receive/Forward/Processed; required for Return..."
+                      placeholder={
+                        canReceiveCurrentDoc
+                          ? "Optional note when receiving this document..."
+                          : "Optional note for Forward/Processed; required for Return..."
+                      }
                       className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <button
-                      type="button"
-                      disabled={acting}
-                      onClick={() => executeCustodyAction("received")}
-                      className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-chmsu-navy px-3 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-forest disabled:opacity-60"
-                    >
-                      <PackageCheck className="h-4 w-4" />
-                      Receive
-                    </button>
+                  {canReceiveCurrentDoc ? (
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs text-slate-600">
+                        Confirm receipt to take custody of this document. Once
+                        received, you can Forward, Return, or Mark as Processed.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={acting || loadingRoutes}
+                        onClick={() => executeCustodyAction("received")}
+                        className="inline-flex min-h-11 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-chmsu-navy px-5 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-forest disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {acting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <PackageCheck className="h-4 w-4" />
+                        )}
+                        {acting ? "Receiving..." : "Receive Document"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <button
+                        type="button"
+                        disabled={acting || loadingRoutes}
+                        onClick={() => setShowForwardForm((prev) => !prev)}
+                        className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-chmsu-forest bg-white px-3 py-2 text-xs font-semibold text-chmsu-forest transition hover:bg-chmsu-green/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Send className="h-4 w-4 text-chmsu-green" />
+                        Forward
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={acting}
-                      onClick={() => setShowForwardForm((prev) => !prev)}
-                      className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-chmsu-forest bg-white px-3 py-2 text-xs font-semibold text-chmsu-forest transition hover:bg-chmsu-green/10 disabled:opacity-60"
-                    >
-                      <Send className="h-4 w-4 text-chmsu-green" />
-                      Forward
-                    </button>
+                      <button
+                        type="button"
+                        disabled={acting || loadingRoutes}
+                        onClick={() => executeCustodyAction("returned")}
+                        className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {acting ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-chmsu-flame" />
+                        ) : (
+                          <RotateCcw className="h-4 w-4 text-chmsu-flame" />
+                        )}
+                        Return
+                      </button>
 
-                    <button
-                      type="button"
-                      disabled={acting}
-                      onClick={() => executeCustodyAction("completed")}
-                      className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-chmsu-green px-3 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-forest disabled:opacity-60"
-                    >
-                      <FileCheck2 className="h-4 w-4" />
-                      Mark as Processed
-                    </button>
+                      <button
+                        type="button"
+                        disabled={acting || loadingRoutes}
+                        onClick={() => executeCustodyAction("completed")}
+                        className="inline-flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-xl bg-chmsu-green px-3 py-2 text-xs font-semibold text-white transition hover:bg-chmsu-forest disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {acting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <FileCheck2 className="h-4 w-4" />
+                        )}
+                        Mark as Processed
+                      </button>
+                    </div>
+                  )}
 
-                    <button
-                      type="button"
-                      disabled={acting}
-                      onClick={() => executeCustodyAction("returned")}
-                      className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-orange-300 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900 transition hover:bg-orange-100 disabled:opacity-60"
-                    >
-                      <RotateCcw className="h-4 w-4 text-chmsu-flame" />
-                      Return
-                    </button>
-                  </div>
-
-                  {/* Inline Forward Form */}
-                  {showForwardForm && (
+                  {/* Inline Forward Form (Only when already received & in custody) */}
+                  {canActOnReceivedDoc && showForwardForm && (
                     <div className="space-y-3 rounded-xl border border-chmsu-green/30 bg-emerald-50/40 p-4">
                       <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-chmsu-forest">
                         <ArrowRightLeft className="h-4 w-4 text-chmsu-green" />

@@ -40,6 +40,12 @@ import DocumentRegisterPanel from "@/components/DocumentRegisterPanel";
 import MyDocumentsClient from "@/components/MyDocumentsClient";
 import LiveNotificationBell from "@/components/LiveNotificationBell";
 import HeaderAccountMenu from "@/components/HeaderAccountMenu";
+import {
+  deleteAnnouncementAttachment,
+  uploadAnnouncementAttachment,
+} from "@/lib/announcementAttachments";
+import AnnouncementAttachmentPicker from "@/components/AnnouncementAttachmentPicker";
+import AnnouncementAttachment from "@/components/AnnouncementAttachment";
 import useUnreadAnnouncements from "@/hooks/useUnreadAnnouncements";
 import {
   ANNOUNCEMENT_CATEGORIES,
@@ -48,6 +54,7 @@ import {
   CROSS_CAMPUS_ROLES,
   ROLE_LABELS,
   getAvailabilityMeta,
+  normalizeAnnouncementCategory,
 } from "@/lib/constants";
 
 const NEWS_CATEGORIES = [
@@ -152,6 +159,9 @@ export default function FacultyPortalClient({
   const [newsCategory, setNewsCategory] = useState("all");
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [existingAttachment, setExistingAttachment] = useState(null);
+  const [removedAttachmentPath, setRemovedAttachmentPath] = useState(null);
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [busyRowId, setBusyRowId] = useState(null);
 
@@ -180,7 +190,7 @@ export default function FacultyPortalClient({
       const { data } = await supabase
         .from("announcements")
         .select(
-          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, author:author_id(full_name, department, office_location)"
+          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, attachment_url, attachment_path, attachment_name, attachment_type, attachment_size, author:author_id(full_name, department, office_location)"
         )
         .or(`campus_id.eq.${campus.id},campus_id.is.null`)
         .order("is_pinned", { ascending: false })
@@ -297,6 +307,24 @@ export default function FacultyPortalClient({
         is_pinned: Boolean(form.is_pinned),
       };
 
+      let uploadedAttachment = null;
+      if (attachmentFile) {
+        uploadedAttachment = await uploadAnnouncementAttachment(
+          supabase,
+          profile.id,
+          attachmentFile
+        );
+        Object.assign(payload, uploadedAttachment);
+      } else if (editingId && !existingAttachment) {
+        Object.assign(payload, {
+          attachment_url: null,
+          attachment_path: null,
+          attachment_name: null,
+          attachment_type: null,
+          attachment_size: null,
+        });
+      }
+
       if (editingId) {
         const { data, error } = await supabase
           .from("announcements")
@@ -307,8 +335,18 @@ export default function FacultyPortalClient({
           .single();
 
         if (error) {
+          if (uploadedAttachment?.attachment_path) {
+            await deleteAnnouncementAttachment(
+              supabase,
+              uploadedAttachment.attachment_path
+            );
+          }
           showFeedback("error", error.message);
           return;
+        }
+
+        if (removedAttachmentPath) {
+          await deleteAnnouncementAttachment(supabase, removedAttachmentPath);
         }
 
         await writeAuditLog(
@@ -327,6 +365,9 @@ export default function FacultyPortalClient({
         await refreshAnnouncements(supabase);
         setEditingId(null);
         setForm(EMPTY_FORM);
+        setAttachmentFile(null);
+        setExistingAttachment(null);
+        setRemovedAttachmentPath(null);
         showFeedback("success", "Announcement updated and synced.");
       } else {
         const { data, error } = await supabase
@@ -340,6 +381,12 @@ export default function FacultyPortalClient({
           .single();
 
         if (error) {
+          if (uploadedAttachment?.attachment_path) {
+            await deleteAnnouncementAttachment(
+              supabase,
+              uploadedAttachment.attachment_path
+            );
+          }
           showFeedback("error", error.message);
           return;
         }
@@ -360,8 +407,16 @@ export default function FacultyPortalClient({
 
         await refreshAnnouncements(supabase);
         setForm(EMPTY_FORM);
+        setAttachmentFile(null);
+        setExistingAttachment(null);
+        setRemovedAttachmentPath(null);
         showFeedback("success", "Announcement published successfully.");
       }
+    } catch (err) {
+      showFeedback(
+        "error",
+        err?.message || "Failed to publish announcement."
+      );
     } finally {
       setSavingAnnouncement(false);
     }
@@ -373,7 +428,7 @@ export default function FacultyPortalClient({
     setForm({
       title: item.title ?? "",
       body: item.body ?? "",
-      category: item.category ?? "general",
+      category: normalizeAnnouncementCategory(item.category),
       priority: item.priority ?? "normal",
       event_start_at: toLocalDateTimeInput(item.event_start_at),
       event_end_at: toLocalDateTimeInput(item.event_end_at),
@@ -382,6 +437,19 @@ export default function FacultyPortalClient({
       is_pinned: Boolean(item.is_pinned),
       university_wide: item.campus_id === null,
     });
+    setAttachmentFile(null);
+    setExistingAttachment(
+      item.attachment_url
+        ? {
+            attachment_url: item.attachment_url,
+            attachment_path: item.attachment_path,
+            attachment_name: item.attachment_name,
+            attachment_type: item.attachment_type,
+            attachment_size: item.attachment_size,
+          }
+        : null
+    );
+    setRemovedAttachmentPath(null);
     handleSelectTab("manage");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -480,6 +548,10 @@ export default function FacultyPortalClient({
         return;
       }
 
+      if (item.attachment_path) {
+        await deleteAnnouncementAttachment(supabase, item.attachment_path);
+      }
+
       await writeAuditLog(
         supabase,
         "announcement.deleted",
@@ -491,6 +563,9 @@ export default function FacultyPortalClient({
       if (editingId === item.id) {
         setEditingId(null);
         setForm(EMPTY_FORM);
+        setAttachmentFile(null);
+        setExistingAttachment(null);
+        setRemovedAttachmentPath(null);
       }
 
       await refreshAnnouncements(supabase);
@@ -851,6 +926,9 @@ export default function FacultyPortalClient({
                         onClick={() => {
                           setEditingId(null);
                           setForm(EMPTY_FORM);
+                          setAttachmentFile(null);
+                          setExistingAttachment(null);
+                          setRemovedAttachmentPath(null);
                         }}
                         className="rounded-lg border border-chmsu-border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                       >
@@ -897,6 +975,30 @@ export default function FacultyPortalClient({
                         className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
                       />
                     </div>
+
+                    <AnnouncementAttachmentPicker
+                      inputId="faculty_ann_attachment"
+                      file={attachmentFile}
+                      existingAttachment={existingAttachment}
+                      disabled={savingAnnouncement}
+                      onFileSelect={(picked) => {
+                        if (existingAttachment?.attachment_path) {
+                          setRemovedAttachmentPath(
+                            existingAttachment.attachment_path
+                          );
+                        }
+                        setAttachmentFile(picked);
+                      }}
+                      onClear={() => {
+                        if (existingAttachment?.attachment_path) {
+                          setRemovedAttachmentPath(
+                            existingAttachment.attachment_path
+                          );
+                        }
+                        setAttachmentFile(null);
+                        setExistingAttachment(null);
+                      }}
+                    />
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
@@ -1120,6 +1222,13 @@ export default function FacultyPortalClient({
                                 <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-600">
                                   {item.body}
                                 </p>
+                                <AnnouncementAttachment
+                                  url={item.attachment_url}
+                                  name={item.attachment_name}
+                                  type={item.attachment_type}
+                                  size={item.attachment_size}
+                                  compact
+                                />
                               </td>
 
                               <td className="px-4 py-3.5 align-top">
@@ -1359,6 +1468,13 @@ export default function FacultyPortalClient({
                         <p className="mt-1.5 whitespace-pre-line text-sm leading-relaxed text-slate-700">
                           {item.body}
                         </p>
+
+                        <AnnouncementAttachment
+                          url={item.attachment_url}
+                          name={item.attachment_name}
+                          type={item.attachment_type}
+                          size={item.attachment_size}
+                        />
 
                         <div className="mt-3 flex flex-wrap items-center gap-3">
                           {item.event_start_at && (

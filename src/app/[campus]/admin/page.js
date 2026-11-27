@@ -64,7 +64,7 @@ export default async function CampusAdminPage({ params }) {
     supabase
       .from("announcements")
       .select(
-        "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, published_at, is_active, created_at"
+        "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, published_at, is_active, created_at, attachment_url, attachment_path, attachment_name, attachment_type, attachment_size"
       )
       .eq("campus_id", campus.id)
       .order("is_pinned", { ascending: false })

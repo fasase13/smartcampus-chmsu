@@ -173,10 +173,15 @@ export function getAvailabilityMeta(status) {
 export const ANNOUNCEMENT_CATEGORIES = [
   { value: "general", label: "General" },
   { value: "academic", label: "Academic" },
-  { value: "calendar", label: "Calendar" },
   { value: "emergency", label: "Emergency" },
   { value: "event", label: "Event" },
 ];
+
+export function normalizeAnnouncementCategory(category) {
+  return ANNOUNCEMENT_CATEGORIES.some((c) => c.value === category)
+    ? category
+    : "general";
+}
 
 export const ANNOUNCEMENT_PRIORITIES = [
   { value: "normal", label: "Normal", badgeClass: "bg-slate-100 text-slate-700 border-slate-200" },

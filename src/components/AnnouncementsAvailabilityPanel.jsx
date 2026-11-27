@@ -26,7 +26,14 @@ import {
   AVAILABILITY_STATUSES,
   CROSS_CAMPUS_ROLES,
   getAvailabilityMeta,
+  normalizeAnnouncementCategory,
 } from "@/lib/constants";
+import {
+  deleteAnnouncementAttachment,
+  uploadAnnouncementAttachment,
+} from "@/lib/announcementAttachments";
+import AnnouncementAttachmentPicker from "@/components/AnnouncementAttachmentPicker";
+import AnnouncementAttachment from "@/components/AnnouncementAttachment";
 
 function toLocalDateTimeInput(isoString) {
   if (!isoString) return "";
@@ -80,6 +87,9 @@ export default function AnnouncementsAvailabilityPanel({
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  const [attachmentFile, setAttachmentFile] = useState(null);
+  const [existingAttachment, setExistingAttachment] = useState(null);
+  const [removedAttachmentPath, setRemovedAttachmentPath] = useState(null);
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [busyRowId, setBusyRowId] = useState(null);
   const [feedback, setFeedback] = useState(null);
@@ -105,7 +115,7 @@ export default function AnnouncementsAvailabilityPanel({
       const { data } = await supabase
         .from("announcements")
         .select(
-          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at"
+          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, attachment_url, attachment_path, attachment_name, attachment_type, attachment_size"
         )
         .or(`campus_id.eq.${campus.id},campus_id.is.null`)
         .order("is_pinned", { ascending: false })
@@ -212,6 +222,24 @@ export default function AnnouncementsAvailabilityPanel({
         is_pinned: Boolean(form.is_pinned),
       };
 
+      let uploadedAttachment = null;
+      if (attachmentFile) {
+        uploadedAttachment = await uploadAnnouncementAttachment(
+          supabase,
+          profile.id,
+          attachmentFile
+        );
+        Object.assign(payload, uploadedAttachment);
+      } else if (editingId && !existingAttachment) {
+        Object.assign(payload, {
+          attachment_url: null,
+          attachment_path: null,
+          attachment_name: null,
+          attachment_type: null,
+          attachment_size: null,
+        });
+      }
+
       if (editingId) {
         const { data, error } = await supabase
           .from("announcements")
@@ -222,8 +250,18 @@ export default function AnnouncementsAvailabilityPanel({
           .single();
 
         if (error) {
+          if (uploadedAttachment?.attachment_path) {
+            await deleteAnnouncementAttachment(
+              supabase,
+              uploadedAttachment.attachment_path
+            );
+          }
           setFeedback({ type: "error", message: error.message });
           return;
+        }
+
+        if (removedAttachmentPath) {
+          await deleteAnnouncementAttachment(supabase, removedAttachmentPath);
         }
 
         await writeAuditLog(
@@ -242,6 +280,9 @@ export default function AnnouncementsAvailabilityPanel({
         await refreshAnnouncements(supabase);
         setEditingId(null);
         setForm(EMPTY_FORM);
+        setAttachmentFile(null);
+        setExistingAttachment(null);
+        setRemovedAttachmentPath(null);
         setFeedback({ type: "success", message: "Announcement updated." });
       } else {
         const { data, error } = await supabase
@@ -255,6 +296,12 @@ export default function AnnouncementsAvailabilityPanel({
           .single();
 
         if (error) {
+          if (uploadedAttachment?.attachment_path) {
+            await deleteAnnouncementAttachment(
+              supabase,
+              uploadedAttachment.attachment_path
+            );
+          }
           setFeedback({ type: "error", message: error.message });
           return;
         }
@@ -275,11 +322,19 @@ export default function AnnouncementsAvailabilityPanel({
 
         await refreshAnnouncements(supabase);
         setForm(EMPTY_FORM);
+        setAttachmentFile(null);
+        setExistingAttachment(null);
+        setRemovedAttachmentPath(null);
         setFeedback({
           type: "success",
           message: "Announcement published successfully.",
         });
       }
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        message: err?.message || "Failed to publish announcement.",
+      });
     } finally {
       setSavingAnnouncement(false);
     }
@@ -291,7 +346,7 @@ export default function AnnouncementsAvailabilityPanel({
     setForm({
       title: item.title ?? "",
       body: item.body ?? "",
-      category: item.category ?? "general",
+      category: normalizeAnnouncementCategory(item.category),
       priority: item.priority ?? "normal",
       event_start_at: toLocalDateTimeInput(item.event_start_at),
       event_end_at: toLocalDateTimeInput(item.event_end_at),
@@ -300,6 +355,19 @@ export default function AnnouncementsAvailabilityPanel({
       is_pinned: Boolean(item.is_pinned),
       university_wide: item.campus_id === null,
     });
+    setAttachmentFile(null);
+    setExistingAttachment(
+      item.attachment_url
+        ? {
+            attachment_url: item.attachment_url,
+            attachment_path: item.attachment_path,
+            attachment_name: item.attachment_name,
+            attachment_type: item.attachment_type,
+            attachment_size: item.attachment_size,
+          }
+        : null
+    );
+    setRemovedAttachmentPath(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -393,6 +461,10 @@ export default function AnnouncementsAvailabilityPanel({
         return;
       }
 
+      if (item.attachment_path) {
+        await deleteAnnouncementAttachment(supabase, item.attachment_path);
+      }
+
       await writeAuditLog(
         supabase,
         "announcement.deleted",
@@ -403,6 +475,9 @@ export default function AnnouncementsAvailabilityPanel({
       if (editingId === item.id) {
         setEditingId(null);
         setForm(EMPTY_FORM);
+        setAttachmentFile(null);
+        setExistingAttachment(null);
+        setRemovedAttachmentPath(null);
       }
       await refreshAnnouncements(supabase);
       setFeedback({ type: "success", message: "Announcement deleted." });
@@ -612,6 +687,9 @@ export default function AnnouncementsAvailabilityPanel({
                 onClick={() => {
                   setEditingId(null);
                   setForm(EMPTY_FORM);
+                  setAttachmentFile(null);
+                  setExistingAttachment(null);
+                  setRemovedAttachmentPath(null);
                 }}
                 className="rounded-lg border border-chmsu-border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
               >
@@ -658,6 +736,26 @@ export default function AnnouncementsAvailabilityPanel({
                 className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-sm text-slate-900 outline-none focus:border-chmsu-green focus:ring-2 focus:ring-chmsu-green/20"
               />
             </div>
+
+            <AnnouncementAttachmentPicker
+              inputId="rmo_ann_attachment"
+              file={attachmentFile}
+              existingAttachment={existingAttachment}
+              disabled={savingAnnouncement}
+              onFileSelect={(picked) => {
+                if (existingAttachment?.attachment_path) {
+                  setRemovedAttachmentPath(existingAttachment.attachment_path);
+                }
+                setAttachmentFile(picked);
+              }}
+              onClear={() => {
+                if (existingAttachment?.attachment_path) {
+                  setRemovedAttachmentPath(existingAttachment.attachment_path);
+                }
+                setAttachmentFile(null);
+                setExistingAttachment(null);
+              }}
+            />
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -879,6 +977,13 @@ export default function AnnouncementsAvailabilityPanel({
                         <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-600">
                           {item.body}
                         </p>
+                        <AnnouncementAttachment
+                          url={item.attachment_url}
+                          name={item.attachment_name}
+                          type={item.attachment_type}
+                          size={item.attachment_size}
+                          compact
+                        />
                       </td>
 
                       <td className="px-4 py-3.5 align-top">

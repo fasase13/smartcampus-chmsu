@@ -34,6 +34,12 @@ import { createClient } from "@/lib/supabase/client";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
 import LiveNotificationBell from "@/components/LiveNotificationBell";
 import HeaderAccountMenu from "@/components/HeaderAccountMenu";
+import {
+  deleteAnnouncementAttachment,
+  uploadAnnouncementAttachment,
+} from "@/lib/announcementAttachments";
+import AnnouncementAttachmentPicker from "@/components/AnnouncementAttachmentPicker";
+import AnnouncementAttachment from "@/components/AnnouncementAttachment";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -50,6 +56,7 @@ import {
   STORAGE_BUCKETS,
   formatSlaDays,
   getCampusAdminTitle,
+  normalizeAnnouncementCategory,
 } from "@/lib/constants";
 
 function formatDateTime(isoString) {
@@ -155,6 +162,12 @@ export default function SuperadminPortalClient({
 
   // Announcements editor state
   const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT);
+  const [announcementAttachmentFile, setAnnouncementAttachmentFile] =
+    useState(null);
+  const [existingAnnouncementAttachment, setExistingAnnouncementAttachment] =
+    useState(null);
+  const [removedAnnouncementAttachmentPath, setRemovedAnnouncementAttachmentPath] =
+    useState(null);
   const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [announcementCampusFilter, setAnnouncementCampusFilter] =
     useState("all");
@@ -204,7 +217,7 @@ export default function SuperadminPortalClient({
     const { data } = await supabase
       .from("announcements")
       .select(
-        "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at"
+        "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, attachment_url, attachment_path, attachment_name, attachment_type, attachment_size"
       )
       .order("is_pinned", { ascending: false })
       .order("created_at", { ascending: false })
@@ -652,6 +665,24 @@ export default function SuperadminPortalClient({
         is_pinned: Boolean(announcementForm.is_pinned),
       };
 
+      let uploadedAttachment = null;
+      if (announcementAttachmentFile) {
+        uploadedAttachment = await uploadAnnouncementAttachment(
+          supabase,
+          profile.id,
+          announcementAttachmentFile
+        );
+        Object.assign(payload, uploadedAttachment);
+      } else if (announcementForm.id && !existingAnnouncementAttachment) {
+        Object.assign(payload, {
+          attachment_url: null,
+          attachment_path: null,
+          attachment_name: null,
+          attachment_type: null,
+          attachment_size: null,
+        });
+      }
+
       let error;
       if (announcementForm.id) {
         ({ error } = await supabase
@@ -666,8 +697,21 @@ export default function SuperadminPortalClient({
       }
 
       if (error) {
+        if (uploadedAttachment?.attachment_path) {
+          await deleteAnnouncementAttachment(
+            supabase,
+            uploadedAttachment.attachment_path
+          );
+        }
         setFeedback({ type: "error", message: error.message });
         return;
+      }
+
+      if (removedAnnouncementAttachmentPath) {
+        await deleteAnnouncementAttachment(
+          supabase,
+          removedAnnouncementAttachmentPath
+        );
       }
 
       await supabase.from("audit_logs").insert({
@@ -687,12 +731,20 @@ export default function SuperadminPortalClient({
       });
 
       setAnnouncementForm(EMPTY_ANNOUNCEMENT);
+      setAnnouncementAttachmentFile(null);
+      setExistingAnnouncementAttachment(null);
+      setRemovedAnnouncementAttachmentPath(null);
       await Promise.all([refreshAnnouncements(), refreshAuditLogs()]);
       setFeedback({
         type: "success",
         message: announcementForm.id
           ? "Announcement updated."
           : "Announcement published.",
+      });
+    } catch (err) {
+      setFeedback({
+        type: "error",
+        message: err?.message || "Failed to publish announcement.",
       });
     } finally {
       setSavingAnnouncement(false);
@@ -722,6 +774,9 @@ export default function SuperadminPortalClient({
     if (error) {
       setFeedback({ type: "error", message: error.message });
       return;
+    }
+    if (item.attachment_path) {
+      await deleteAnnouncementAttachment(supabase, item.attachment_path);
     }
     await refreshAnnouncements();
     setFeedback({ type: "success", message: "Announcement deleted." });
@@ -1542,7 +1597,12 @@ export default function SuperadminPortalClient({
                   {announcementForm.id && (
                     <button
                       type="button"
-                      onClick={() => setAnnouncementForm(EMPTY_ANNOUNCEMENT)}
+                      onClick={() => {
+                        setAnnouncementForm(EMPTY_ANNOUNCEMENT);
+                        setAnnouncementAttachmentFile(null);
+                        setExistingAnnouncementAttachment(null);
+                        setRemovedAnnouncementAttachmentPath(null);
+                      }}
                       className="text-xs font-semibold text-slate-500 hover:text-chmsu-forest"
                     >
                       Cancel Edit
@@ -1661,6 +1721,30 @@ export default function SuperadminPortalClient({
                   />
                 </div>
 
+                <AnnouncementAttachmentPicker
+                  inputId="superadmin_ann_attachment"
+                  file={announcementAttachmentFile}
+                  existingAttachment={existingAnnouncementAttachment}
+                  disabled={savingAnnouncement}
+                  onFileSelect={(picked) => {
+                    if (existingAnnouncementAttachment?.attachment_path) {
+                      setRemovedAnnouncementAttachmentPath(
+                        existingAnnouncementAttachment.attachment_path
+                      );
+                    }
+                    setAnnouncementAttachmentFile(picked);
+                  }}
+                  onClear={() => {
+                    if (existingAnnouncementAttachment?.attachment_path) {
+                      setRemovedAnnouncementAttachmentPath(
+                        existingAnnouncementAttachment.attachment_path
+                      );
+                    }
+                    setAnnouncementAttachmentFile(null);
+                    setExistingAnnouncementAttachment(null);
+                  }}
+                />
+
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap gap-4 text-xs font-semibold text-slate-700">
                     <label className="inline-flex cursor-pointer items-center gap-2">
@@ -1772,6 +1856,12 @@ export default function SuperadminPortalClient({
                           <p className="text-xs text-slate-600 whitespace-pre-line">
                             {item.body}
                           </p>
+                          <AnnouncementAttachment
+                            url={item.attachment_url}
+                            name={item.attachment_name}
+                            type={item.attachment_type}
+                            size={item.attachment_size}
+                          />
                           <p className="text-[11px] text-slate-400 tabular-nums">
                             {formatDateTime(item.published_at || item.created_at)}
                           </p>
@@ -1787,18 +1877,33 @@ export default function SuperadminPortalClient({
                           </button>
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
                               setAnnouncementForm({
                                 id: item.id,
                                 campus_id: item.campus_id ?? "university",
                                 title: item.title,
                                 body: item.body,
-                                category: item.category,
+                                category: normalizeAnnouncementCategory(
+                                  item.category
+                                ),
                                 priority: item.priority,
                                 is_public: Boolean(item.is_public),
                                 is_pinned: Boolean(item.is_pinned),
-                              })
-                            }
+                              });
+                              setAnnouncementAttachmentFile(null);
+                              setExistingAnnouncementAttachment(
+                                item.attachment_url
+                                  ? {
+                                      attachment_url: item.attachment_url,
+                                      attachment_path: item.attachment_path,
+                                      attachment_name: item.attachment_name,
+                                      attachment_type: item.attachment_type,
+                                      attachment_size: item.attachment_size,
+                                    }
+                                  : null
+                              );
+                              setRemovedAnnouncementAttachmentPath(null);
+                            }}
                             className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green"
                           >
                             <Edit3 className="h-3.5 w-3.5" />

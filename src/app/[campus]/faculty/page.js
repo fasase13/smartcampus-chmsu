@@ -79,7 +79,7 @@ export default async function FacultyPortalPage({ params, searchParams }) {
       supabase
         .from("announcements")
         .select(
-          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, author:author_id(full_name, department, office_location)"
+          "id, campus_id, author_id, title, body, category, priority, is_public, is_pinned, event_start_at, event_end_at, published_at, expires_at, is_active, created_at, attachment_url, attachment_path, attachment_name, attachment_type, attachment_size, author:author_id(full_name, department, office_location)"
         )
         .or(`campus_id.eq.${campus.id},campus_id.is.null`)
         .order("is_pinned", { ascending: false })

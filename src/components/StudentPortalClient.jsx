@@ -19,6 +19,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
 import LiveNotificationBell from "@/components/LiveNotificationBell";
+import AnnouncementAttachment from "@/components/AnnouncementAttachment";
 import HeaderAccountMenu from "@/components/HeaderAccountMenu";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
@@ -84,7 +85,7 @@ export default function StudentPortalClient({
     const { data } = await supabase
       .from("announcements")
       .select(
-        "id, campus_id, title, body, category, priority, is_pinned, event_start_at, event_end_at, published_at, expires_at"
+        "id, campus_id, title, body, category, priority, is_pinned, event_start_at, event_end_at, published_at, expires_at, attachment_url, attachment_path, attachment_name, attachment_type, attachment_size"
       )
       .eq("is_active", true)
       .lte("published_at", nowIso)
@@ -433,6 +434,13 @@ export default function StudentPortalClient({
                       <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-700">
                         {item.body}
                       </p>
+
+                      <AnnouncementAttachment
+                        url={item.attachment_url}
+                        name={item.attachment_name}
+                        type={item.attachment_type}
+                        size={item.attachment_size}
+                      />
 
                       {item.event_start_at && (
                         <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-chmsu-border bg-chmsu-canvas px-3 py-1.5 text-xs font-semibold text-chmsu-navy">

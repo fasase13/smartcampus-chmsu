@@ -26,7 +26,7 @@ export default async function CampusKioskPage({ params }) {
     supabase
       .from("announcements")
       .select(
-        "id, campus_id, title, body, category, priority, is_pinned, event_start_at, event_end_at, published_at, expires_at"
+        "id, campus_id, title, body, category, priority, is_pinned, event_start_at, event_end_at, published_at, expires_at, attachment_url, attachment_path, attachment_name, attachment_type, attachment_size"
       )
       .eq("is_active", true)
       .eq("is_public", true)
