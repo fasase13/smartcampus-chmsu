@@ -18,7 +18,7 @@ export const RETURNABLE_FIELD_OPTIONS = [
   { key: "requested_role", label: "Role" },
   { key: "employee_or_student_id", label: "School ID" },
   { key: "full_name", label: "Full Name" },
-  { key: "department", label: "College / Department" },
+  { key: "department", label: "College / Department", hideForRmo: true },
   { key: "program_or_office", label: "Program / Office" },
   { key: "job_title", label: "Job Title", nonStudentOnly: true },
   { key: "is_teaching", label: "Teaches Classes", nonStudentOnly: true },
@@ -118,6 +118,7 @@ export default function RegistrationReviewModal({
 
   const isStudent =
     user.requested_role === "student" || Boolean(user.program_or_course);
+  const isRmo = user.requested_role === "rmo";
 
   function toggleFlag(key) {
     setFlaggedFields((prev) =>
@@ -243,14 +244,16 @@ export default function RegistrationReviewModal({
                     </span>
                   </dd>
                 </div>
-                <div>
-                  <dt className="font-semibold text-slate-500">
-                    College / Department
-                  </dt>
-                  <dd className="mt-0.5 font-semibold text-slate-900">
-                    {user.department || "—"}
-                  </dd>
-                </div>
+                {(!isRmo || user.department) && (
+                  <div>
+                    <dt className="font-semibold text-slate-500">
+                      College / Department
+                    </dt>
+                    <dd className="mt-0.5 font-semibold text-slate-900">
+                      {user.department || "—"}
+                    </dd>
+                  </div>
+                )}
                 <div>
                   <dt className="font-semibold text-slate-500">
                     {isStudent ? "Program" : "Office"}
@@ -367,9 +370,15 @@ export default function RegistrationReviewModal({
                   </p>
                   <div className="mt-2.5 flex flex-wrap gap-2">
                     {RETURNABLE_FIELD_OPTIONS.filter(
-                      (opt) => !(opt.nonStudentOnly && isStudent)
+                      (opt) =>
+                        !(opt.nonStudentOnly && isStudent) &&
+                        !(opt.hideForRmo && isRmo)
                     ).map((opt) => {
                       const checked = flaggedFields.includes(opt.key);
+                      const pillLabel =
+                        isRmo && opt.key === "program_or_office"
+                          ? "Office"
+                          : opt.label;
                       return (
                         <label
                           key={opt.key}
@@ -385,7 +394,7 @@ export default function RegistrationReviewModal({
                             onChange={() => toggleFlag(opt.key)}
                             className="sr-only"
                           />
-                          {opt.label}
+                          {pillLabel}
                         </label>
                       );
                     })}

@@ -30,6 +30,7 @@ import {
 import {
   JOB_TITLES_BY_ROLE,
   getDepartmentsForCampusAndRole,
+  getRmoOfficesForCampus,
   getSubOptionsForSelection,
 } from "@/lib/chmsuDirectory";
 import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
@@ -174,12 +175,17 @@ export default function CompleteRegistrationForm({
   const selectedCampusSlug =
     campuses.find((c) => c.id === campusId)?.slug ?? "";
   const isStudentRole = requestedRole === "student";
+  const isRmoRole = requestedRole === "rmo";
   const departmentOptions =
-    selectedCampusSlug && requestedRole
+    selectedCampusSlug && requestedRole && !isRmoRole
       ? getDepartmentsForCampusAndRole(selectedCampusSlug, requestedRole)
       : [];
+  const rmoOfficeOptions =
+    selectedCampusSlug && isRmoRole
+      ? getRmoOfficesForCampus(selectedCampusSlug)
+      : [];
   const subOptions =
-    selectedCampusSlug && requestedRole && department
+    selectedCampusSlug && requestedRole && !isRmoRole && department
       ? getSubOptionsForSelection(selectedCampusSlug, requestedRole, department)
       : [];
   const jobTitleOptions =
@@ -215,7 +221,8 @@ export default function CompleteRegistrationForm({
       requestedRole === snapshot.requested_role
   );
   const isDeptDuplicate = Boolean(
-    isFlagged("department") &&
+    !isRmoRole &&
+      isFlagged("department") &&
       snapshot?.department &&
       department &&
       department.trim().toLowerCase() ===
@@ -350,7 +357,7 @@ export default function CompleteRegistrationForm({
       setErrorMessage("Please select a valid role.");
       return;
     }
-    if (!cleanDept) {
+    if (!isRmoRole && !cleanDept) {
       setErrorMessage("Please select your College / Department.");
       return;
     }
@@ -465,7 +472,7 @@ export default function CompleteRegistrationForm({
           p_id_number: cleanId,
           p_full_name: cleanName,
           p_requested_role: requestedRole,
-          p_department: cleanDept,
+          p_department: isRmoRole ? null : cleanDept,
           p_front_path: finalFrontPath,
           p_back_path: finalBackPath,
           p_program_or_course: isStudentRole ? cleanProgram : null,
@@ -669,6 +676,7 @@ export default function CompleteRegistrationForm({
                       setDepartment("");
                       setProgramOrCourse("");
                       setOfficeLocation("");
+                      setJobTitle("");
                     }}
                     className={`w-full rounded-xl border py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
                       isFlagged("campus_id"),
@@ -808,50 +816,89 @@ export default function CompleteRegistrationForm({
                 )}
               </div>
 
-              <div>
-                <label
-                  htmlFor="department"
-                  className="block text-sm font-semibold text-slate-700"
-                >
-                  {isStudentRole ? "College" : "College / Department"}{" "}
-                  <span className="text-red-600">*</span>
-                </label>
-                <select
-                  id="department"
-                  required
-                  disabled={!campusId || !requestedRole}
-                  value={department}
-                  onChange={(e) => {
-                    setDepartment(e.target.value);
-                    setProgramOrCourse("");
-                    setOfficeLocation("");
-                  }}
-                  className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:bg-slate-100 ${fieldRing(
-                    isFlagged("department"),
-                    isDeptDuplicate
-                  )}`}
-                >
-                  <option value="">
-                    {isStudentRole
-                      ? "Select your College..."
-                      : "Select your College / Department..."}
-                  </option>
-                  {departmentOptions.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
+              {isRmoRole ? (
+                <div>
+                  <label
+                    htmlFor="office-location"
+                    className="block text-sm font-semibold text-slate-700"
+                  >
+                    Office <span className="text-red-600">*</span>
+                    {isFlagged("program_or_office") && (
+                      <span className="ml-1.5 text-[11px] font-bold text-amber-700">
+                        (Needs correction)
+                      </span>
+                    )}
+                  </label>
+                  <select
+                    id="office-location"
+                    required
+                    disabled={!campusId}
+                    value={officeLocation}
+                    onChange={(e) => setOfficeLocation(e.target.value)}
+                    className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:bg-slate-100 ${fieldRing(
+                      isFlagged("program_or_office"),
+                      isSubDuplicate
+                    )}`}
+                  >
+                    <option value="">Select your Office...</option>
+                    {rmoOfficeOptions.map((officeOption) => (
+                      <option key={officeOption} value={officeOption}>
+                        {officeOption}
+                      </option>
+                    ))}
+                  </select>
+                  {isSubDuplicate && (
+                    <p className="mt-1 text-xs font-semibold text-red-700">
+                      {invalidDuplicateMsg}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label
+                    htmlFor="department"
+                    className="block text-sm font-semibold text-slate-700"
+                  >
+                    {isStudentRole ? "College" : "College / Department"}{" "}
+                    <span className="text-red-600">*</span>
+                  </label>
+                  <select
+                    id="department"
+                    required
+                    disabled={!campusId || !requestedRole}
+                    value={department}
+                    onChange={(e) => {
+                      setDepartment(e.target.value);
+                      setProgramOrCourse("");
+                      setOfficeLocation("");
+                    }}
+                    className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:bg-slate-100 ${fieldRing(
+                      isFlagged("department"),
+                      isDeptDuplicate
+                    )}`}
+                  >
+                    <option value="">
+                      {isStudentRole
+                        ? "Select your College..."
+                        : "Select your College / Department..."}
                     </option>
-                  ))}
-                </select>
-                {isDeptDuplicate && (
-                  <p className="mt-1 text-xs font-semibold text-red-700">
-                    {invalidDuplicateMsg}
-                  </p>
-                )}
-              </div>
+                    {departmentOptions.map((dept) => (
+                      <option key={dept} value={dept}>
+                        {dept}
+                      </option>
+                    ))}
+                  </select>
+                  {isDeptDuplicate && (
+                    <p className="mt-1 text-xs font-semibold text-red-700">
+                      {invalidDuplicateMsg}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Cascading Program (Students) or Office (Non-Students) */}
-            {department && (
+            {/* Cascading Program (Students) or Office (Faculty / Staff) */}
+            {!isRmoRole && department && (
               <div>
                 <label
                   htmlFor={

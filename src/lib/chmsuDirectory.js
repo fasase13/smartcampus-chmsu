@@ -192,6 +192,36 @@ export function getSubOptionsForSelection(campusSlug, role, department) {
 }
 
 /**
+ * Returns the direct list of institutional / campus-level offices for RMO
+ * self-registration (no College / Department selection required).
+ * Always places "Records Management Office (RMO)" first.
+ */
+export function getRmoOfficesForCampus(campusSlug) {
+  const entry = CHMSU_CAMPUS_DIRECTORY[campusSlug];
+  if (!entry) return [];
+
+  const seen = new Set();
+  const ordered = [];
+  const primaryRmoOffice = "Records Management Office (RMO)";
+
+  const allAdminOffices = Object.values(entry.administrativeDepartments).flat();
+
+  if (allAdminOffices.includes(primaryRmoOffice)) {
+    ordered.push(primaryRmoOffice);
+    seen.add(primaryRmoOffice);
+  }
+
+  for (const office of allAdminOffices) {
+    if (!seen.has(office)) {
+      ordered.push(office);
+      seen.add(office);
+    }
+  }
+
+  return ordered;
+}
+
+/**
  * Returns grouped Destination Office options for a given campus slug
  * (used by RMO document intake and Office QR Scanner forwarding dropdowns).
  * - Administrative / Support divisions are grouped by division name.

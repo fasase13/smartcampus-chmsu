@@ -268,8 +268,7 @@ export default function UserProfileView({
 
   async function sendOtpEmail() {
     if (!canSelfResetPassword) return;
-    const email = String(profile.email ?? "").trim();
-    if (!email || isSendingOtp || cooldown > 0) return;
+    if (!profile.email || isSendingOtp || cooldown > 0) return;
 
     setIsSendingOtp(true);
     setFormError("");
@@ -277,7 +276,7 @@ export default function UserProfileView({
 
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      const { error } = await supabase.auth.reauthenticate();
 
       setShowOtpPanel(true);
       if (error) {
@@ -318,10 +317,9 @@ export default function UserProfileView({
     if (!canSelfResetPassword) return;
     setFormError("");
 
-    const email = String(profile.email ?? "").trim();
-    const cleanOtp = otpCode.replace(/\D/g, "");
+    const cleanOtp = otpCode.trim().replace(/\D/g, "");
 
-    if (!/^\d{6}$/.test(cleanOtp)) {
+    if (cleanOtp.length !== 6) {
       setFormError("Please enter the 6-digit verification code sent to your email.");
       return;
     }
@@ -342,28 +340,15 @@ export default function UserProfileView({
     try {
       const supabase = createClient();
 
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        email,
-        token: cleanOtp,
-        type: "recovery",
-      });
-
-      if (verifyError) {
-        setFormError(
-          verifyError.message ||
-            "Invalid or expired 6-digit verification code. Please check the code or request a new one."
-        );
-        return;
-      }
-
-      const { error: updateError } = await supabase.auth.updateUser({
+      const { error } = await supabase.auth.updateUser({
         password: newPassword,
+        nonce: cleanOtp,
       });
 
-      if (updateError) {
+      if (error) {
         setFormError(
-          updateError.message ||
-            "Your code was verified, but we could not update your password. Please try a stronger password."
+          error.message ||
+            "Invalid or expired 6-digit verification code, or password could not be updated."
         );
         return;
       }
@@ -601,7 +586,8 @@ export default function UserProfileView({
               </dd>
             </div>
 
-            {(!isAdmin || profile.department) && (
+            {((!isAdmin && profile.role !== ROLES.RMO) ||
+              profile.department) && (
               <div className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-4 py-3">
                 <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <Building2 className="h-3.5 w-3.5 text-chmsu-green" />

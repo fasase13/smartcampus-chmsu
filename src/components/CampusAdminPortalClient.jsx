@@ -1236,14 +1236,17 @@ export default function CampusAdminPortalClient({
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    College / Department
-                  </span>
-                  <span className="text-right text-xs font-medium text-slate-800">
-                    {selectedUser.department || "—"}
-                  </span>
-                </div>
+                {(selectedUser.role !== ROLES.RMO ||
+                  selectedUser.department) && (
+                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-xs font-semibold text-slate-500">
+                      College / Department
+                    </span>
+                    <span className="text-right text-xs font-medium text-slate-800">
+                      {selectedUser.department || "—"}
+                    </span>
+                  </div>
+                )}
 
                 {selectedUser.role === ROLES.STUDENT ||
                   selectedUser.program_or_course ? (
