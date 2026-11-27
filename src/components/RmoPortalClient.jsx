@@ -147,6 +147,9 @@ export default function RmoPortalClient({
               }}
             />
             <HeaderAccountMenu
+              userId={profile?.id}
+              avatarUrl={profile?.avatar_url}
+              fullName={profile?.full_name}
               onOpenProfile={() => handleSelectTab("profile")}
               onSignOut={handleSignOut}
               signingOut={signingOut}

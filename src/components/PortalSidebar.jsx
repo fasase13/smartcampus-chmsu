@@ -4,12 +4,13 @@ import { useCallback, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, LogOut, Menu, ShieldCheck, X } from "lucide-react";
+import { useLiveAvatarUrl } from "@/lib/avatarSync";
 
 const STORAGE_KEY = "smartcampus_sidebar_collapsed";
 const CHANGE_EVENT = "smartcampus-sidebar-change";
 
 function subscribeCollapsed(callback) {
-  if (typeof window === "undefined") return () => {};
+  if (typeof window === "undefined") return () => { };
   const handler = () => callback();
   window.addEventListener("storage", handler);
   window.addEventListener(CHANGE_EVENT, handler);
@@ -99,7 +100,7 @@ function getInitials(name) {
 }
 
 export default function PortalSidebar({
-  title,
+  title = "SmartCampus CHMSU",
   subtitle,
   navItems,
   activeId,
@@ -117,14 +118,15 @@ export default function PortalSidebar({
   ariaLabel = "Portal Navigation",
 }) {
   const initials = getInitials(profile?.full_name || profile?.email);
+  const avatarUrl = useLiveAvatarUrl(profile?.id, profile?.avatar_url);
   const isProfileActive = activeId === "profile";
   const handleProfileCardClick =
     onProfileClick ||
     (onSelect
       ? () => {
-          onSelect("profile");
-          onCloseMobile?.();
-        }
+        onSelect("profile");
+        onCloseMobile?.();
+      }
       : null);
 
   const visibleNavItems = navItems.filter((item) => item.id !== "profile");
@@ -141,20 +143,17 @@ export default function PortalSidebar({
       const hasAlertDot = Boolean(item.alertDot);
       const hasAnyDot = badgeCount > 0 || alertCount > 0 || hasAlertDot;
 
-      const baseClass = `relative flex w-full shrink-0 items-center rounded-xl py-2.5 text-sm transition ${
-        isCompact ? "justify-center px-0" : "justify-between gap-2 px-3.5 text-left"
-      } ${
-        isActive
+      const baseClass = `relative flex w-full shrink-0 items-center rounded-xl py-2.5 text-sm transition ${isCompact ? "justify-center px-0" : "justify-between gap-2 px-3.5 text-left"
+        } ${isActive
           ? "bg-white font-semibold text-[#143D29] shadow-sm"
           : "font-medium text-white/85 hover:bg-white/10 hover:text-white"
-      }`;
+        }`;
 
       const innerContent = (
         <>
           <span
-            className={`flex items-center ${
-              isCompact ? "justify-center" : "min-w-0 gap-2.5"
-            }`}
+            className={`flex items-center ${isCompact ? "justify-center" : "min-w-0 gap-2.5"
+              }`}
           >
             <Icon className="h-4 w-4 shrink-0" />
             {!isCompact && <span className="truncate">{item.label}</span>}
@@ -176,9 +175,8 @@ export default function PortalSidebar({
 
           {isCompact && hasAnyDot && (
             <span
-              className={`absolute right-2.5 top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-[#143D29] ${
-                alertCount > 0 || hasAlertDot ? "bg-red-500" : "bg-[#FACC15]"
-              }`}
+              className={`absolute right-2.5 top-1.5 h-2.5 w-2.5 rounded-full ring-2 ring-[#143D29] ${alertCount > 0 || hasAlertDot ? "bg-red-500" : "bg-[#FACC15]"
+                }`}
             />
           )}
         </>
@@ -220,9 +218,8 @@ export default function PortalSidebar({
       <>
         {/* Sidebar Header with 3-Line Collapse Toggle */}
         <div
-          className={`flex shrink-0 items-center border-b border-white/10 py-4 ${
-            isCompact ? "justify-center px-2" : "justify-between gap-2 px-4"
-          }`}
+          className={`flex min-h-[61px] shrink-0 items-center border-b border-white/15 py-3 sm:min-h-[65px] ${isCompact ? "justify-center px-2" : "justify-between gap-2 px-4"
+            }`}
         >
           {isCompact ? (
             <button
@@ -230,7 +227,7 @@ export default function PortalSidebar({
               onClick={onToggleCollapse}
               aria-label="Expand sidebar"
               title="Expand sidebar"
-              className="inline-flex items-center justify-center rounded-lg p-2 text-white transition hover:bg-white/10"
+              className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-white/25 text-white transition hover:bg-white/10"
             >
               <Menu className="h-5 w-5" />
             </button>
@@ -243,7 +240,7 @@ export default function PortalSidebar({
                     onClick={onToggleCollapse}
                     aria-label="Collapse sidebar"
                     title="Collapse sidebar"
-                    className="inline-flex shrink-0 items-center justify-center rounded-lg p-2 text-white transition hover:bg-white/10"
+                    className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-white/25 text-white transition hover:bg-white/10"
                   >
                     <Menu className="h-5 w-5" />
                   </button>
@@ -274,9 +271,8 @@ export default function PortalSidebar({
 
         {/* Top Interactive User Profile Card (Opens My Profile) */}
         <div
-          className={`shrink-0 border-b border-white/10 ${
-            isCompact ? "p-3" : "p-3.5"
-          }`}
+          className={`shrink-0 ${isCompact ? "px-3 pb-2 pt-3.5" : "px-3.5 pb-2 pt-3.5"
+            }`}
         >
           {isCompact ? (
             <button
@@ -285,13 +281,21 @@ export default function PortalSidebar({
               title={`My Profile — ${profile?.full_name ?? "User"}`}
               aria-label="My Profile"
               aria-current={isProfileActive ? "page" : undefined}
-              className={`mx-auto flex h-10 w-10 cursor-pointer items-center justify-center rounded-full text-xs font-bold transition ${
-                isProfileActive
+              className={`mx-auto flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-full text-xs font-bold transition ${isProfileActive
                   ? "bg-white text-[#143D29] ring-2 ring-[#FACC15]"
                   : "border border-white/15 bg-white/10 text-[#FACC15] hover:bg-white/20"
-              }`}
+                }`}
             >
-              {initials}
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarUrl}
+                  alt={profile?.full_name || "Profile photo"}
+                  className="h-full w-full rounded-full object-cover"
+                />
+              ) : (
+                initials
+              )}
             </button>
           ) : (
             <button
@@ -299,11 +303,10 @@ export default function PortalSidebar({
               onClick={handleProfileCardClick ?? undefined}
               title="View My Profile"
               aria-current={isProfileActive ? "page" : undefined}
-              className={`group w-full cursor-pointer rounded-xl p-3 text-left transition ${
-                isProfileActive
+              className={`group w-full cursor-pointer rounded-xl p-3 text-left transition ${isProfileActive
                   ? "border border-[#FACC15] bg-white/15 ring-2 ring-[#FACC15]/75"
                   : "border border-white/10 bg-white/10 hover:bg-white/15"
-              }`}
+                }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
@@ -315,11 +318,10 @@ export default function PortalSidebar({
                   </p>
                 </div>
                 <ChevronRight
-                  className={`mt-0.5 h-4 w-4 shrink-0 transition ${
-                    isProfileActive
+                  className={`mt-0.5 h-4 w-4 shrink-0 transition ${isProfileActive
                       ? "text-[#FACC15]"
                       : "text-white/50 group-hover:translate-x-0.5 group-hover:text-white"
-                  }`}
+                    }`}
                 />
               </div>
               {roleBadge && (
@@ -335,16 +337,15 @@ export default function PortalSidebar({
         {/* Navigation Links / Tabs */}
         <nav
           aria-label={ariaLabel}
-          className="flex flex-1 flex-col gap-1 overflow-y-auto p-3"
+          className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 pb-3 pt-2"
         >
           {renderNavItems(isCompact)}
         </nav>
 
         {/* Bottom Sign Out */}
         <div
-          className={`mt-auto shrink-0 border-t border-white/10 ${
-            isCompact ? "p-3" : "p-4"
-          }`}
+          className={`mt-auto shrink-0 border-t border-white/10 ${isCompact ? "p-3" : "p-4"
+            }`}
         >
           <button
             type="button"
@@ -352,9 +353,8 @@ export default function PortalSidebar({
             onClick={onSignOut}
             title={isCompact ? "Sign Out" : undefined}
             aria-label={isCompact ? "Sign Out" : undefined}
-            className={`flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60 ${
-              isCompact ? "px-0" : "px-3"
-            }`}
+            className={`flex w-full items-center justify-center gap-2 rounded-xl border border-white/25 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-60 ${isCompact ? "px-0" : "px-3"
+              }`}
           >
             <LogOut className="h-4 w-4 shrink-0" />
             {!isCompact && (signingOut ? "Signing out..." : "Sign Out")}
@@ -368,32 +368,28 @@ export default function PortalSidebar({
     <>
       {/* Desktop Fixed Full-Viewport Collapsible Sidebar (lg+) */}
       <aside
-        className={`no-print hidden h-screen shrink-0 flex-col border-r border-white/10 bg-[#143D29] text-white transition-all duration-200 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex ${
-          collapsed ? "w-20" : "w-64"
-        }`}
+        className={`no-print hidden h-screen shrink-0 flex-col border-r border-white/10 bg-[#143D29] text-white transition-all duration-200 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex ${collapsed ? "w-20" : "w-64"
+          }`}
       >
         {renderSidebarContent(collapsed, false)}
       </aside>
 
       {/* Mobile Slide-Over Drawer (< lg) */}
       <div
-        className={`no-print fixed inset-0 z-40 lg:hidden ${
-          mobileOpen ? "pointer-events-auto" : "pointer-events-none"
-        }`}
+        className={`no-print fixed inset-0 z-40 lg:hidden ${mobileOpen ? "pointer-events-auto" : "pointer-events-none"
+          }`}
         aria-hidden={!mobileOpen}
       >
         {/* Backdrop */}
         <div
           onClick={onCloseMobile}
-          className={`fixed inset-0 bg-slate-900/50 backdrop-blur-[1px] transition-opacity duration-200 ${
-            mobileOpen ? "opacity-100" : "opacity-0"
-          }`}
+          className={`fixed inset-0 bg-slate-900/50 backdrop-blur-[1px] transition-opacity duration-200 ${mobileOpen ? "opacity-100" : "opacity-0"
+            }`}
         />
         {/* Drawer Panel */}
         <aside
-          className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 max-w-[85vw] flex-col border-r border-white/10 bg-[#143D29] text-white shadow-xl transition-transform duration-200 ${
-            mobileOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          className={`fixed inset-y-0 left-0 z-40 flex h-dvh w-64 max-w-[85vw] flex-col border-r border-white/10 bg-[#143D29] text-white shadow-xl transition-transform duration-200 ${mobileOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
         >
           {renderSidebarContent(false, true)}
         </aside>

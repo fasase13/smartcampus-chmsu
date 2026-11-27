@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   Briefcase,
   Building2,
   Calendar,
+  Camera,
   CheckCircle2,
   CreditCard,
   Eye,
@@ -18,14 +20,22 @@ import {
   MapPin,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   User,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ADMIN_PORTAL_ROLES, ROLE_LABELS, ROLES } from "@/lib/constants";
+import { broadcastAvatarUpdate, useLiveAvatarUrl } from "@/lib/avatarSync";
 
 const MIN_PASSWORD_LENGTH = 8;
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
 
 function getInitials(name) {
   const primary = String(name ?? "")
@@ -47,7 +57,18 @@ function formatDate(isoString) {
   }).format(new Date(isoString));
 }
 
-export default function UserProfileView({ profile, campus = null }) {
+export default function UserProfileView({
+  profile,
+  campus = null,
+  onAvatarUpdated = null,
+}) {
+  const router = useRouter();
+  const fileInputRef = useRef(null);
+  const avatarUrl = useLiveAvatarUrl(profile?.id, profile?.avatar_url);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarError, setAvatarError] = useState("");
+  const [avatarNotice, setAvatarNotice] = useState("");
+
   const [showOtpPanel, setShowOtpPanel] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
   const [isSendingOtp, setIsSendingOtp] = useState(false);
@@ -94,6 +115,145 @@ export default function UserProfileView({ profile, campus = null }) {
   const verifiedOrCreatedDate = formatDate(
     profile.reviewed_at || profile.created_at
   );
+
+  async function handleAvatarFileChange(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || avatarBusy) return;
+
+    setAvatarError("");
+    setAvatarNotice("");
+
+    const ext = ALLOWED_AVATAR_TYPES[file.type];
+    if (!ext) {
+      setAvatarError("Please choose a JPG, PNG, or WebP image file.");
+      return;
+    }
+
+    if (file.size > MAX_AVATAR_BYTES) {
+      setAvatarError("Profile photo must be 5 MB or smaller.");
+      return;
+    }
+
+    setAvatarBusy(true);
+    try {
+      const supabase = createClient();
+      const folder = String(profile.id);
+      const newFileName = `avatar-${Date.now()}.${ext}`;
+      const newPath = `${folder}/${newFileName}`;
+
+      const { data: existingFiles } = await supabase.storage
+        .from("avatars")
+        .list(folder);
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(newPath, file, {
+          contentType: file.type,
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        setAvatarError(
+          uploadError.message ||
+            "Unable to upload profile photo. Please try again."
+        );
+        return;
+      }
+
+      const { data: publicUrlData } = supabase.storage
+        .from("avatars")
+        .getPublicUrl(newPath);
+      const publicUrl = publicUrlData?.publicUrl;
+
+      if (!publicUrl) {
+        setAvatarError("Unable to resolve uploaded profile photo URL.");
+        return;
+      }
+
+      const { error: rpcError } = await supabase.rpc("update_my_avatar", {
+        p_avatar_url: publicUrl,
+      });
+
+      if (rpcError) {
+        await supabase.storage.from("avatars").remove([newPath]);
+        setAvatarError(
+          rpcError.message ||
+            "Unable to save your new profile photo. Please try again."
+        );
+        return;
+      }
+
+      if (Array.isArray(existingFiles) && existingFiles.length > 0) {
+        const oldPaths = existingFiles
+          .map((item) => item?.name)
+          .filter((name) => Boolean(name) && name !== newFileName)
+          .map((name) => `${folder}/${name}`);
+
+        if (oldPaths.length > 0) {
+          await supabase.storage.from("avatars").remove(oldPaths);
+        }
+      }
+
+      broadcastAvatarUpdate(profile.id, publicUrl);
+      onAvatarUpdated?.(publicUrl);
+      setAvatarNotice("Profile photo updated.");
+      router.refresh();
+    } catch {
+      setAvatarError("Unable to upload profile photo right now. Please try again.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function handleRemoveAvatar() {
+    if (!avatarUrl || avatarBusy) return;
+
+    setAvatarError("");
+    setAvatarNotice("");
+    setAvatarBusy(true);
+
+    try {
+      const supabase = createClient();
+      const folder = String(profile.id);
+
+      const { error: rpcError } = await supabase.rpc("update_my_avatar", {
+        p_avatar_url: null,
+      });
+
+      if (rpcError) {
+        setAvatarError(
+          rpcError.message || "Unable to remove profile photo. Please try again."
+        );
+        return;
+      }
+
+      const { data: existingFiles } = await supabase.storage
+        .from("avatars")
+        .list(folder);
+
+      if (Array.isArray(existingFiles) && existingFiles.length > 0) {
+        const pathsToRemove = existingFiles
+          .map((item) => item?.name)
+          .filter(Boolean)
+          .map((name) => `${folder}/${name}`);
+
+        if (pathsToRemove.length > 0) {
+          await supabase.storage.from("avatars").remove(pathsToRemove);
+        }
+      }
+
+      broadcastAvatarUpdate(profile.id, null);
+      onAvatarUpdated?.(null);
+      setAvatarNotice("Profile photo removed.");
+      router.refresh();
+    } catch {
+      setAvatarError("Unable to remove profile photo right now. Please try again.");
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   function closeOtpPanel() {
     setShowOtpPanel(false);
@@ -233,7 +393,47 @@ export default function UserProfileView({ profile, campus = null }) {
         </p>
       </div>
 
-      {/* Password Updated Confirmation Banner */}
+      {/* Password Updated / Avatar Feedback Banners */}
+      {avatarNotice && (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-xs"
+        >
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span>{avatarNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAvatarNotice("")}
+            aria-label="Dismiss message"
+            className="rounded-lg p-1 text-emerald-700 transition hover:bg-emerald-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {avatarError && (
+        <div
+          role="alert"
+          className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800 shadow-xs"
+        >
+          <div className="flex items-center gap-2.5">
+            <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
+            <span>{avatarError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAvatarError("")}
+            aria-label="Dismiss error"
+            className="rounded-lg p-1 text-red-700 transition hover:bg-red-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {canSelfResetPassword && successMessage && (
         <div
           role="status"
@@ -260,9 +460,51 @@ export default function UserProfileView({ profile, campus = null }) {
         <div className="bg-[#143D29] px-6 py-6 text-white">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
-              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 border-[#FACC15]/70 bg-white/10 text-xl font-bold text-[#FACC15]">
-                {initials}
+              <div className="relative shrink-0">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleAvatarFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={avatarBusy}
+                  title="Change profile photo"
+                  aria-label="Upload or replace profile photo"
+                  className="group relative flex h-16 w-16 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-[#FACC15]/70 bg-white/10 text-xl font-bold text-[#FACC15] transition hover:border-[#FACC15] focus:outline-none focus:ring-2 focus:ring-[#FACC15]/60 disabled:cursor-wait"
+                >
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={avatarUrl}
+                      alt={profile.full_name || "Profile photo"}
+                      className="h-full w-full rounded-full object-cover"
+                    />
+                  ) : (
+                    <span>{initials}</span>
+                  )}
+
+                  {avatarBusy ? (
+                    <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    </span>
+                  ) : (
+                    <span className="absolute inset-0 flex flex-col items-center justify-center rounded-full bg-black/55 px-1 text-center text-[10px] font-semibold leading-tight text-white opacity-0 transition group-hover:opacity-100">
+                      Change Photo
+                    </span>
+                  )}
+                </button>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-[#FACC15] text-[#143D29] shadow-sm ring-2 ring-[#143D29]"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                </span>
               </div>
+
               <div className="min-w-0">
                 <h2 className="truncate text-xl font-bold tracking-tight text-white">
                   {profile.full_name}
@@ -285,6 +527,17 @@ export default function UserProfileView({ profile, campus = null }) {
                     <CheckCircle2 className="h-3 w-3" />
                     {profile.is_active ? "Active" : "Deactivated"}
                   </span>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveAvatar}
+                      disabled={avatarBusy}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Remove photo
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

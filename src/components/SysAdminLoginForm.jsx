@@ -10,7 +10,6 @@ import {
   Loader2,
   Lock,
   Mail,
-  ShieldCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLES } from "@/lib/constants";
@@ -74,7 +73,7 @@ export default function SysAdminLoginForm() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center bg-chmsu-canvas px-4 py-10 text-slate-900">
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-chmsu-border bg-chmsu-card shadow-xs">
-        <div className="bg-chmsu-navy px-6 py-6 text-white">
+        <div className="bg-chmsu-forest px-6 py-5 text-white">
           <div className="flex items-center gap-3.5">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white p-1">
               <Image
@@ -94,11 +93,6 @@ export default function SysAdminLoginForm() {
                 System Admin Portal
               </h1>
             </div>
-          </div>
-
-          <div className="mt-4 flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/90">
-            <ShieldCheck className="h-4 w-4 shrink-0 text-chmsu-gold" />
-            <span>Authorized Superadmin access only</span>
           </div>
         </div>
 
@@ -172,7 +166,7 @@ export default function SysAdminLoginForm() {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-chmsu-navy px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-forest disabled:opacity-60"
+            className="mt-2 flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-chmsu-forest px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-green focus:outline-none focus:ring-2 focus:ring-chmsu-green/30 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? (
               <>

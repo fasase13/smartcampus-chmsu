@@ -416,7 +416,7 @@ export default function CampusAdminPortalClient({
   return (
     <div className="min-h-dvh flex flex-col bg-chmsu-canvas text-slate-900 lg:flex-row">
       <PortalSidebar
-        title={campusAdminTitle}
+        title="SmartCampus CHMSU"
         subtitle={`CHMSU ${campus.name}`}
         navItems={navTabs}
         activeId={activeTab}
@@ -462,6 +462,9 @@ export default function CampusAdminPortalClient({
                 }}
               />
               <HeaderAccountMenu
+                userId={profile?.id}
+                avatarUrl={profile?.avatar_url}
+                fullName={profile?.full_name}
                 onOpenProfile={() => {
                   setActiveTab("profile");
                   if (typeof window !== "undefined") {

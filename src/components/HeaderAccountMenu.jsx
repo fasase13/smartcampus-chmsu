@@ -2,14 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { LogOut, User } from "lucide-react";
+import { useLiveAvatarUrl } from "@/lib/avatarSync";
 
 export default function HeaderAccountMenu({
+  userId = null,
+  avatarUrl = null,
+  fullName = "",
   onOpenProfile,
   onSignOut,
   signingOut = false,
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
+  const liveAvatarUrl = useLiveAvatarUrl(userId, avatarUrl);
 
   useEffect(() => {
     if (!open) return;
@@ -45,13 +50,22 @@ export default function HeaderAccountMenu({
         aria-label="Account menu"
         aria-expanded={open}
         aria-haspopup="menu"
-        className={`inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border bg-white text-slate-700 transition hover:border-chmsu-green hover:bg-chmsu-canvas hover:text-chmsu-forest ${
+        className={`inline-flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border bg-white text-slate-700 transition hover:border-chmsu-green hover:bg-chmsu-canvas hover:text-chmsu-forest ${
           open
             ? "border-chmsu-green bg-chmsu-canvas text-chmsu-forest ring-2 ring-chmsu-green/15"
             : "border-chmsu-border"
         }`}
       >
-        <User className="h-4 w-4" />
+        {liveAvatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={liveAvatarUrl}
+            alt={fullName || "Account profile photo"}
+            className="h-full w-full rounded-full object-cover"
+          />
+        ) : (
+          <User className="h-4 w-4" />
+        )}
       </button>
 
       {open && (

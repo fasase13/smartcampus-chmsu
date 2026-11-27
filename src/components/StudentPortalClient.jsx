@@ -242,7 +242,7 @@ export default function StudentPortalClient({
       <PrivacyTermsGate profile={profile} />
 
       <PortalSidebar
-        title="Student Portal"
+        title="SmartCampus CHMSU"
         subtitle={`CHMSU ${campus.name}`}
         navItems={sidebarNavItems}
         activeId={activeTab}
@@ -285,6 +285,9 @@ export default function StudentPortalClient({
                 onNavigate={() => setActiveTab("news")}
               />
               <HeaderAccountMenu
+                userId={profile.id}
+                avatarUrl={profile.avatar_url}
+                fullName={profile.full_name}
                 onOpenProfile={() => {
                   setActiveTab("profile");
                   if (typeof window !== "undefined") {

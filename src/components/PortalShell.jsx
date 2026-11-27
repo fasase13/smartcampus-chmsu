@@ -199,6 +199,9 @@ export default function PortalShell({
               onNavigate={() => setActiveView("main")}
             />
             <HeaderAccountMenu
+              userId={profile?.id}
+              avatarUrl={profile?.avatar_url}
+              fullName={profile?.full_name}
               onOpenProfile={() => {
                 setActiveView("profile");
                 if (typeof window !== "undefined") {

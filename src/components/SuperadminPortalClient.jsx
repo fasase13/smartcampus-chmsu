@@ -865,6 +865,9 @@ export default function SuperadminPortalClient({
                 }}
               />
               <HeaderAccountMenu
+                userId={profile?.id}
+                avatarUrl={profile?.avatar_url}
+                fullName={profile?.full_name}
                 onOpenProfile={() => {
                   setActiveTab("profile");
                   if (typeof window !== "undefined") {
