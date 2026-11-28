@@ -193,6 +193,14 @@ export default function StudentPortalClient({
     setSigningOut(true);
     try {
       const supabase = createClient();
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_out",
+          p_portal: "student",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
       await supabase.auth.signOut();
       router.push("/");
       router.refresh();
@@ -556,7 +564,7 @@ export default function StudentPortalClient({
                             </p>
                           </div>
                           <span
-                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${meta.badgeClass}`}
+                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-bold ${meta.badgeClass}`}
                           >
                             <span
                               className={`h-2 w-2 rounded-full ${meta.dotClass}`}
@@ -617,7 +625,7 @@ export default function StudentPortalClient({
                 <span className="relative">
                   <Icon className="h-5 w-5" />
                   {tab.badge > 0 && (
-                    <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#FACC15] px-1 text-[10px] font-bold text-[#143D29] tabular-nums">
+                    <span className="absolute -right-2.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-[#FACC15] px-1 text-[10px] font-bold text-[#143D29] tabular-nums">
                       {tab.badge > 99 ? "99+" : tab.badge}
                     </span>
                   )}

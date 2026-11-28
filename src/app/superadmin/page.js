@@ -5,8 +5,29 @@ import SuperadminPortalClient from "@/components/SuperadminPortalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function SuperadminPortalPage() {
+const VALID_SUPERADMIN_TABS = new Set([
+  "dashboard",
+  "users",
+  "registrations",
+  "announcements",
+  "maintenance",
+  "audit",
+  "profile",
+]);
+
+export default async function SuperadminPortalPage({ searchParams }) {
   const { supabase, user, profile } = await getAuthenticatedProfile();
+  const resolvedSearchParams = await searchParams;
+  const rawTab = String(resolvedSearchParams?.tab ?? "").toLowerCase();
+  const initialTab =
+    rawTab === "overview" ||
+    rawTab === "analytics" ||
+    rawTab === "alerts" ||
+    rawTab === "documents"
+      ? "dashboard"
+      : VALID_SUPERADMIN_TABS.has(rawTab)
+        ? rawTab
+        : "dashboard";
 
   if (!user) {
     redirect("/");
@@ -31,8 +52,8 @@ export default async function SuperadminPortalPage() {
     campusesRes,
     usersRes,
     announcementsRes,
-    documentsRes,
     auditLogsRes,
+    documentRoutesRes,
     settingsRes,
   ] = await Promise.all([
     supabase
@@ -44,7 +65,7 @@ export default async function SuperadminPortalPage() {
     supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, is_teaching, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, avatar_url, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, is_teaching, show_on_kiosk, is_active, created_at"
       )
       .order("created_at", { ascending: false }),
     supabase
@@ -56,19 +77,19 @@ export default async function SuperadminPortalPage() {
       .order("created_at", { ascending: false })
       .limit(200),
     supabase
-      .from("documents")
-      .select(
-        "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
-      )
-      .order("created_at", { ascending: false })
-      .limit(500),
-    supabase
       .from("audit_logs")
       .select(
         "id, campus_id, actor_id, actor_role, action, entity_type, entity_id, metadata, created_at, actor:actor_id(full_name, email)"
       )
       .order("created_at", { ascending: false })
       .limit(400),
+    supabase
+      .from("document_routes")
+      .select(
+        "id, document_id, campus_id, from_office, to_office, action, remarks, acted_by, created_at, actor:acted_by(full_name, email, role), document:document_id(tracking_code, title, origin_campus_id)"
+      )
+      .order("created_at", { ascending: false })
+      .limit(300),
     supabase
       .from("system_settings")
       .select("id, maintenance_mode, maintenance_message, maintenance_updated_at")
@@ -79,11 +100,12 @@ export default async function SuperadminPortalPage() {
   return (
     <SuperadminPortalClient
       profile={profile}
+      initialTab={initialTab}
       campuses={campusesRes.data ?? []}
       initialUsers={usersRes.data ?? []}
       initialAnnouncements={announcementsRes.data ?? []}
-      initialDocuments={documentsRes.data ?? []}
       initialAuditLogs={auditLogsRes.data ?? []}
+      initialDocumentRoutes={documentRoutesRes.data ?? []}
       initialSettings={
         settingsRes.data ?? {
           id: 1,

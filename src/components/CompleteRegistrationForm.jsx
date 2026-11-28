@@ -620,7 +620,7 @@ export default function CompleteRegistrationForm({
                     {flaggedFields.map((key) => (
                       <span
                         key={key}
-                        className="rounded-full bg-amber-200 px-2.5 py-0.5 text-[11px] font-bold text-amber-950"
+                        className="rounded-md bg-amber-200 px-2.5 py-0.5 text-[11px] font-bold text-amber-950"
                       >
                         {FIELD_LABELS[key] ?? key}
                       </span>

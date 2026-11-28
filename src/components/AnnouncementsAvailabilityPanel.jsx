@@ -84,6 +84,7 @@ export default function AnnouncementsAvailabilityPanel({
   const [savingAvailability, setSavingAvailability] = useState(false);
 
   // Announcements state
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
@@ -199,6 +200,15 @@ export default function AnnouncementsAvailabilityPanel({
     }
   }
 
+  function resetAnnouncementComposer() {
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setAttachmentFile(null);
+    setExistingAttachment(null);
+    setRemovedAttachmentPath(null);
+    setIsComposerOpen(false);
+  }
+
   async function handleAnnouncementSubmit(e) {
     e.preventDefault();
     setSavingAnnouncement(true);
@@ -278,11 +288,7 @@ export default function AnnouncementsAvailabilityPanel({
         );
 
         await refreshAnnouncements(supabase);
-        setEditingId(null);
-        setForm(EMPTY_FORM);
-        setAttachmentFile(null);
-        setExistingAttachment(null);
-        setRemovedAttachmentPath(null);
+        resetAnnouncementComposer();
         setFeedback({ type: "success", message: "Announcement updated." });
       } else {
         const { data, error } = await supabase
@@ -321,10 +327,7 @@ export default function AnnouncementsAvailabilityPanel({
         );
 
         await refreshAnnouncements(supabase);
-        setForm(EMPTY_FORM);
-        setAttachmentFile(null);
-        setExistingAttachment(null);
-        setRemovedAttachmentPath(null);
+        resetAnnouncementComposer();
         setFeedback({
           type: "success",
           message: "Announcement published successfully.",
@@ -368,6 +371,7 @@ export default function AnnouncementsAvailabilityPanel({
         : null
     );
     setRemovedAttachmentPath(null);
+    setIsComposerOpen(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -473,11 +477,7 @@ export default function AnnouncementsAvailabilityPanel({
         { title: item.title, category: item.category }
       );
       if (editingId === item.id) {
-        setEditingId(null);
-        setForm(EMPTY_FORM);
-        setAttachmentFile(null);
-        setExistingAttachment(null);
-        setRemovedAttachmentPath(null);
+        resetAnnouncementComposer();
       }
       await refreshAnnouncements(supabase);
       setFeedback({ type: "success", message: "Announcement deleted." });
@@ -504,20 +504,39 @@ export default function AnnouncementsAvailabilityPanel({
           <p className="mt-0.5 text-sm text-slate-600">
             {isTeaching
               ? `Manage your real-time office availability and publish notices for CHMSU ${campus.name}.`
-              : `Publish campus notices, calendar events, or advisories for CHMSU ${campus.name}.`}
+              : `Publish campus notices or advisories for CHMSU ${campus.name}.`}
           </p>
         </div>
 
-        {isTeaching && (
-          <span
-            className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
-          >
+        <div className="flex flex-wrap items-center gap-2.5">
+          {isTeaching && (
             <span
-              className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
-            />
-            Status: {currentStatusMeta.label}
-          </span>
-        )}
+              className={`inline-flex items-center gap-2 rounded-md border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
+            >
+              <span
+                className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
+              />
+              Status: {currentStatusMeta.label}
+            </span>
+          )}
+          {!isComposerOpen && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditingId(null);
+                setForm(EMPTY_FORM);
+                setAttachmentFile(null);
+                setExistingAttachment(null);
+                setRemovedAttachmentPath(null);
+                setIsComposerOpen(true);
+              }}
+              className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#143D29] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f2e1f]"
+            >
+              <Plus className="h-4 w-4" />
+              New Announcement
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Feedback */}
@@ -549,11 +568,16 @@ export default function AnnouncementsAvailabilityPanel({
         </div>
       )}
 
-      {/* Side-by-Side Grid (or Full-Width Announcement Composer when non-teaching) */}
+      {/* Live Availability Control (Teaching Personnel Only) & Expandable Announcement Composer */}
+      {(isTeaching || isComposerOpen) && (
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
         {/* Live Availability Control (Teaching Personnel Only) */}
         {isTeaching && (
-        <section className="rounded-2xl border border-chmsu-border bg-white p-5 xl:col-span-5">
+        <section
+          className={`rounded-2xl border border-chmsu-border bg-white p-5 ${
+            isComposerOpen ? "xl:col-span-5" : "xl:col-span-12"
+          }`}
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
@@ -664,7 +688,8 @@ export default function AnnouncementsAvailabilityPanel({
         </section>
         )}
 
-        {/* Announcement Composer */}
+        {/* Expandable Announcement Composer */}
+        {isComposerOpen && (
         <section
           className={`rounded-2xl border border-chmsu-border bg-white p-5 ${
             isTeaching ? "xl:col-span-7" : "xl:col-span-12"
@@ -674,28 +699,22 @@ export default function AnnouncementsAvailabilityPanel({
             <div>
               <h2 className="flex items-center gap-2 text-lg font-bold text-chmsu-forest">
                 <Plus className="h-5 w-5 text-chmsu-green" />
-                {editingId ? "Edit Announcement" : "Publish Announcement"}
+                {editingId ? "Edit Announcement" : "Publish New Announcement"}
               </h2>
               <p className="mt-0.5 text-xs text-slate-500">
                 Publish notices for CHMSU {campus.name}
                 {canPublishUniversityWide ? " or university-wide" : ""}.
               </p>
             </div>
-            {editingId && (
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingId(null);
-                  setForm(EMPTY_FORM);
-                  setAttachmentFile(null);
-                  setExistingAttachment(null);
-                  setRemovedAttachmentPath(null);
-                }}
-                className="rounded-lg border border-chmsu-border px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-              >
-                Cancel Edit
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={resetAnnouncementComposer}
+              aria-label="Close announcement composer"
+              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-chmsu-border px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+            >
+              <X className="h-3.5 w-3.5" />
+              Cancel
+            </button>
           </div>
 
           <form onSubmit={handleAnnouncementSubmit} className="mt-4 space-y-3.5">
@@ -899,23 +918,33 @@ export default function AnnouncementsAvailabilityPanel({
               )}
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={resetAnnouncementComposer}
+                disabled={savingAnnouncement}
+                className="min-h-11 cursor-pointer rounded-lg border border-chmsu-border bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
               <button
                 type="submit"
                 disabled={savingAnnouncement}
-                className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-chmsu-forest px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-chmsu-green disabled:opacity-60"
+                className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-[#143D29] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f2e1f] disabled:opacity-60"
               >
                 {savingAnnouncement ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Save className="h-4 w-4" />
+                  <Plus className="h-4 w-4" />
                 )}
                 {editingId ? "Update Announcement" : "Publish Announcement"}
               </button>
             </div>
           </form>
         </section>
+        )}
       </div>
+      )}
 
       {/* Owner-Only My Published Announcements */}
       <section className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
@@ -928,15 +957,18 @@ export default function AnnouncementsAvailabilityPanel({
               Manage announcements you have personally published.
             </p>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
+          <span className="rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
             {myAnnouncements.length} published
           </span>
         </div>
 
         {myAnnouncements.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-500">
-            You have not published any announcements yet. Use the composer above
-            to publish your first notice.
+            You have not published any announcements yet. Click{" "}
+            <span className="font-semibold text-chmsu-forest">
+              + New Announcement
+            </span>{" "}
+            above to publish your first notice.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -988,12 +1020,12 @@ export default function AnnouncementsAvailabilityPanel({
 
                       <td className="px-4 py-3.5 align-top">
                         {item.campus_id === null ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
                             <Globe className="h-3 w-3" />
                             University-Wide
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-green/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-chmsu-green/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest">
                             <Building2 className="h-3 w-3" />
                             {campus.name}
                           </span>
@@ -1016,7 +1048,7 @@ export default function AnnouncementsAvailabilityPanel({
                       <td className="px-4 py-3.5 align-top">
                         <div className="flex flex-wrap gap-1.5">
                           <span
-                            className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                            className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${
                               item.is_active
                                 ? "bg-emerald-100 text-emerald-800"
                                 : "bg-slate-200 text-slate-600"
@@ -1024,7 +1056,7 @@ export default function AnnouncementsAvailabilityPanel({
                           >
                             {item.is_active ? "Active" : "Inactive"}
                           </span>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                             {item.is_public ? "Public" : "Internal"}
                           </span>
                         </div>

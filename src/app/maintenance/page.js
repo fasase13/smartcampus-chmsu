@@ -62,7 +62,7 @@ export default async function MaintenancePage() {
           </p>
 
           {settings.maintenance_updated_at && (
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-chmsu-border bg-chmsu-canvas px-3 py-1 text-xs font-medium text-slate-600 tabular-nums">
+            <div className="inline-flex items-center gap-1.5 rounded-md border border-chmsu-border bg-chmsu-canvas px-3 py-1 text-xs font-medium text-slate-600 tabular-nums">
               <Clock className="h-3.5 w-3.5 text-chmsu-green" />
               Last updated: {formatUpdatedAt(settings.maintenance_updated_at)}
             </div>

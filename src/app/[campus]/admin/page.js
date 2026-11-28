@@ -1,12 +1,31 @@
 import { notFound, redirect } from "next/navigation";
 import { getAuthenticatedProfile } from "@/lib/supabase/server";
 import { ROLES, getDefaultRouteForRole } from "@/lib/constants";
+import { isDocumentLog } from "@/lib/auditLogFormat";
 import CampusAdminPortalClient from "@/components/CampusAdminPortalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function CampusAdminPage({ params }) {
+const VALID_CAMPUS_ADMIN_TABS = new Set([
+  "dashboard",
+  "users",
+  "registrations",
+  "announcements",
+  "reports",
+  "profile",
+]);
+
+export default async function CampusAdminPage({ params, searchParams }) {
   const { campus: campusSlug } = await params;
+  const resolvedSearchParams = await searchParams;
+  const rawTab = String(resolvedSearchParams?.tab ?? "").toLowerCase();
+  const initialTab =
+    rawTab === "documents" || rawTab === "alerts"
+      ? "dashboard"
+      : VALID_CAMPUS_ADMIN_TABS.has(rawTab)
+        ? rawTab
+        : "dashboard";
+
   const { supabase, user, profile } = await getAuthenticatedProfile();
 
   if (!user) {
@@ -53,11 +72,11 @@ export default async function CampusAdminPage({ params }) {
     redirect(`/${assignedSlug}/admin?error=campus_restricted`);
   }
 
-  const [usersRes, announcementsRes, documentsRes] = await Promise.all([
+  const [usersRes, announcementsRes, auditLogsRes] = await Promise.all([
     supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, is_teaching, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, avatar_url, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, is_teaching, show_on_kiosk, is_active, created_at"
       )
       .eq("campus_id", campus.id)
       .order("created_at", { ascending: false }),
@@ -71,21 +90,41 @@ export default async function CampusAdminPage({ params }) {
       .order("created_at", { ascending: false })
       .limit(150),
     supabase
-      .from("documents")
+      .from("audit_logs")
       .select(
-        "id, tracking_code, origin_campus_id, current_campus_id, title, document_type, priority, status, current_office, sla_hours, due_at, is_delayed, created_at, updated_at"
+        "id, campus_id, actor_id, actor_role, action, entity_type, entity_id, metadata, created_at, actor:actor_id(full_name, email, role, campus_id)"
       )
+      .eq("campus_id", campus.id)
       .order("created_at", { ascending: false })
-      .limit(200),
+      .limit(400),
   ]);
+
+  const scopedAuditLogs = (auditLogsRes.data ?? []).filter((log) => {
+    if (log.campus_id !== campus.id) return false;
+    if (isDocumentLog(log)) return false;
+    const metaRole = String(log.metadata?.role ?? "").toLowerCase();
+    const actorRole = String(
+      log.actor?.role ?? log.actor_role ?? ""
+    ).toLowerCase();
+    if (
+      actorRole === ROLES.SUPERADMIN ||
+      metaRole === ROLES.SUPERADMIN ||
+      String(log.actor_role ?? "").toLowerCase() === ROLES.SUPERADMIN
+    ) {
+      return false;
+    }
+    if (!log.actor || log.actor.campus_id !== campus.id) return false;
+    return true;
+  });
 
   return (
     <CampusAdminPortalClient
       profile={profile}
       campus={campus}
+      initialTab={initialTab}
       initialUsers={usersRes.data ?? []}
       initialAnnouncements={announcementsRes.data ?? []}
-      initialDocuments={documentsRes.data ?? []}
+      initialAuditLogs={scopedAuditLogs}
     />
   );
 }

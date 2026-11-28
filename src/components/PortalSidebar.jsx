@@ -160,12 +160,12 @@ export default function PortalSidebar({
           </span>
 
           {!isCompact && badgeCount > 0 && (
-            <span className="rounded-full bg-[#FACC15] px-2 py-0.5 text-[11px] font-bold text-[#143D29] tabular-nums">
+            <span className="rounded-md bg-[#FACC15] px-2 py-0.5 text-[11px] font-bold text-[#143D29] tabular-nums">
               {badgeCount > 99 ? "99+" : badgeCount}
             </span>
           )}
           {!isCompact && alertCount > 0 && (
-            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
+            <span className="rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
               {alertCount > 99 ? "99+" : alertCount}
             </span>
           )}
@@ -325,7 +325,7 @@ export default function PortalSidebar({
                 />
               </div>
               {roleBadge && (
-                <span className="mt-2 inline-flex max-w-full items-center gap-1 rounded-full bg-[#FACC15] px-2.5 py-0.5 text-[11px] font-semibold text-[#143D29]">
+                <span className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md bg-[#FACC15] px-2.5 py-0.5 text-[11px] font-semibold text-[#143D29]">
                   <RoleIcon className="h-3 w-3 shrink-0" />
                   <span className="truncate">{roleBadge}</span>
                 </span>

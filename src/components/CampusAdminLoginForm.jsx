@@ -67,6 +67,15 @@ export default function CampusAdminLoginForm() {
         return;
       }
 
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_in",
+          p_portal: "campus_admin",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
+
       router.push(`/${campusSlug}/admin`);
       router.refresh();
     } catch {

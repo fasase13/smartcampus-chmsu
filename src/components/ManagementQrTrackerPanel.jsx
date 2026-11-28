@@ -220,7 +220,7 @@ export default function ManagementQrTrackerPanel({
           </p>
         </div>
 
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-chmsu-navy/20 bg-chmsu-navy/10 px-3 py-1.5 text-xs font-semibold text-chmsu-navy">
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-chmsu-navy/20 bg-chmsu-navy/10 px-3 py-1.5 text-xs font-semibold text-chmsu-navy">
           <Eye className="h-3.5 w-3.5" />
           Read-Only Oversight Mode &mdash; Tracking &amp; Alerts Only
         </span>
@@ -408,7 +408,7 @@ export default function ManagementQrTrackerPanel({
                       {activeDoc.tracking_code}
                     </span>
                     {wasScannedViaQr && (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-800">
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-800">
                         QR Verified
                       </span>
                     )}
@@ -420,7 +420,7 @@ export default function ManagementQrTrackerPanel({
                       </span>
                     )}
                     {activeSla?.overdue && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
                         <AlertTriangle className="h-3 w-3" />
                         {activeSla.label}
                       </span>
@@ -444,7 +444,7 @@ export default function ManagementQrTrackerPanel({
 
                 {activeStatusMeta && (
                   <span
-                    className={`rounded-full border px-3 py-1 text-xs font-bold ${activeStatusMeta.badgeClass}`}
+                    className={`rounded-md border px-3 py-1 text-xs font-bold ${activeStatusMeta.badgeClass}`}
                   >
                     {activeStatusMeta.label}
                   </span>

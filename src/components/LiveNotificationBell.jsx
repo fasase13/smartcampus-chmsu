@@ -228,7 +228,7 @@ export default function LiveNotificationBell({ userId, onNavigate }) {
         >
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 inline-flex min-w-4.5 items-center justify-center rounded-full bg-[#DC2626] px-1 py-0.5 text-[10px] font-bold leading-none text-white tabular-nums">
+            <span className="absolute -right-1 -top-1 inline-flex min-w-4.5 items-center justify-center rounded-md bg-[#DC2626] px-1 py-0.5 text-[10px] font-bold leading-none text-white tabular-nums">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
@@ -246,7 +246,7 @@ export default function LiveNotificationBell({ userId, onNavigate }) {
                   Notifications
                 </h3>
                 {unreadCount > 0 && (
-                  <span className="rounded-full bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold text-white tabular-nums">
+                  <span className="rounded-md bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold text-white tabular-nums">
                     {unreadCount} new
                   </span>
                 )}

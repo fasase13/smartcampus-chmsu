@@ -709,7 +709,7 @@ export default function MyDocumentsClient({
               >
                 <span>{tab.label}</span>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums ${
+                  className={`rounded-md px-2 py-0.5 text-[10px] font-bold tabular-nums ${
                     active
                       ? "bg-white/20 text-white"
                       : "bg-slate-200/80 text-slate-700"
@@ -775,13 +775,13 @@ export default function MyDocumentsClient({
                         {doc.tracking_code}
                       </span>
                       {locked ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
+                        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
                           <Lock className="h-2.5 w-2.5" />
                           Processed
                         </span>
                       ) : (
                         <span
-                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badgeClass}`}
+                          className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${statusMeta.badgeClass}`}
                         >
                           {statusMeta.label}
                         </span>
@@ -792,7 +792,7 @@ export default function MyDocumentsClient({
                         {priorityMeta.label}
                       </span>
                       {sla.overdue && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold text-white">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold text-white">
                           <AlertTriangle className="h-2.5 w-2.5" />
                           {sla.label}
                         </span>
@@ -853,13 +853,13 @@ export default function MyDocumentsClient({
                       {activeDoc.tracking_code}
                     </span>
                     {isDocLocked && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase text-emerald-900">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase text-emerald-900">
                         <Lock className="h-3 w-3" />
                         Processed &mdash; Locked in Records
                       </span>
                     )}
                     {activeSla?.overdue && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-[#DC2626] px-2 py-0.5 text-[10px] font-bold uppercase text-white">
                         <AlertTriangle className="h-3 w-3" />
                         {activeSla.label}
                       </span>
@@ -893,7 +893,7 @@ export default function MyDocumentsClient({
                   </button>
                   {activeStatusMeta && !isDocLocked && (
                     <span
-                      className={`rounded-full border px-3 py-1 text-xs font-bold ${activeStatusMeta.badgeClass}`}
+                      className={`rounded-md border px-3 py-1 text-xs font-bold ${activeStatusMeta.badgeClass}`}
                     >
                       {activeStatusMeta.label}
                     </span>

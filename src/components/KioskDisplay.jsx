@@ -250,7 +250,7 @@ export default function KioskDisplay({
                 <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
                   CHMSU {campus.name}
                 </h1>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-medium text-white">
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-white/15 px-2.5 py-0.5 text-xs font-medium text-white">
                   <Radio
                     className={`h-3.5 w-3.5 ${
                       realtimeConnected ? "text-emerald-300 animate-pulse" : "text-slate-300"
@@ -375,7 +375,7 @@ export default function KioskDisplay({
               <h2 className="text-lg font-bold text-chmsu-forest sm:text-xl">
                 Campus Announcements
               </h2>
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 tabular-nums">
+              <span className="rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 tabular-nums">
                 {filteredAnnouncements.length} active
               </span>
             </div>
@@ -517,7 +517,7 @@ export default function KioskDisplay({
                 <Users className="h-5 w-5 text-chmsu-green" />
                 Instructor Locator
               </h2>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 tabular-nums">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 tabular-nums">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" />
                 {availableCount} Available Now
               </span>
@@ -604,7 +604,7 @@ export default function KioskDisplay({
                         </p>
                       </div>
                       <span
-                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${statusMeta.badgeClass}`}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-bold ${statusMeta.badgeClass}`}
                       >
                         <span
                           className={`h-2 w-2 rounded-full ${statusMeta.dotClass}`}

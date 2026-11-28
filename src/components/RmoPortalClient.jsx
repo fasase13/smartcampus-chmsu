@@ -52,6 +52,14 @@ export default function RmoPortalClient({
     setSigningOut(true);
     try {
       const supabase = createClient();
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_out",
+          p_portal: "rmo",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
       await supabase.auth.signOut();
       router.push("/");
       router.refresh();
@@ -117,9 +125,8 @@ export default function RmoPortalClient({
 
       {/* Main Column */}
       <div
-        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${
-          collapsed ? "lg:pl-20" : "lg:pl-64"
-        }`}
+        className={`flex min-h-screen min-w-0 flex-1 flex-col transition-all duration-200 print:pl-0 ${collapsed ? "lg:pl-20" : "lg:pl-64"
+          }`}
       >
         {/* Sticky Top Header Bar */}
         <header className="no-print sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-chmsu-border bg-white px-4 py-3 sm:px-6">
@@ -130,7 +137,7 @@ export default function RmoPortalClient({
                 <span className="truncate text-sm font-bold text-chmsu-forest">
                   CHMSU {campus.name}
                 </span>
-                <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
+                <span className="hidden items-center rounded-md border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                   {roleLabel}
                 </span>
               </div>

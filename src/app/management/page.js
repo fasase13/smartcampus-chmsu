@@ -5,8 +5,20 @@ import ManagementPortalClient from "@/components/ManagementPortalClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function ManagementPortalPage() {
+const VALID_MANAGEMENT_TABS = new Set([
+  "overview",
+  "alerts",
+  "tracker",
+  "analytics",
+  "audit",
+  "profile",
+]);
+
+export default async function ManagementPortalPage({ searchParams }) {
   const { supabase, user, profile } = await getAuthenticatedProfile();
+  const resolvedSearchParams = await searchParams;
+  const rawTab = String(resolvedSearchParams?.tab ?? "").toLowerCase();
+  const initialTab = VALID_MANAGEMENT_TABS.has(rawTab) ? rawTab : "overview";
 
   if (!user) {
     redirect("/?next=/management");
@@ -80,6 +92,7 @@ export default async function ManagementPortalPage() {
   return (
     <ManagementPortalClient
       profile={profile}
+      initialTab={initialTab}
       campuses={campusesRes.data ?? []}
       initialDocuments={documentsRes.data ?? []}
       initialUsers={usersRes.data ?? []}

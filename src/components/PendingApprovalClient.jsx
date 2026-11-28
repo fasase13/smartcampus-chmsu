@@ -234,7 +234,7 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
                   <ShieldCheck className="h-3.5 w-3.5" />
                   Requested Role
                 </span>
-                <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                <span className="rounded-md bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
                   {ROLE_LABELS[profile?.requested_role ?? profile?.role] ??
                     profile?.requested_role ??
                     "Student"}

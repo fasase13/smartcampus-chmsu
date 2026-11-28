@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { ADMIN_PORTAL_ROLES, ROLES, getDefaultRouteForRole } from "@/lib/constants";
+import { ADMIN_PORTAL_ROLES, getDefaultRouteForRole } from "@/lib/constants";
 
 const ID_NUMBER_REGEX = /^\d{8}$/;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -102,20 +102,14 @@ export async function POST(request) {
     } else {
       redirectTo = getDefaultRouteForRole(profile.role, campusSlug);
 
-      // Best-effort audit log for approved non-student logins
-      if (profile.role !== ROLES.STUDENT && profile.campus_id) {
-        await supabase.from("audit_logs").insert({
-          campus_id: profile.campus_id,
-          actor_id: profile.id,
-          actor_role: profile.role,
-          action: "auth.campus_login",
-          entity_type: "profile",
-          entity_id: profile.id,
-          metadata: {
-            login_method: isIdNumber ? "id_number" : "email",
-            campus_slug: campusSlug,
-          },
+      // Best-effort universal Sign In audit log for all approved active users
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_in",
+          p_portal: profile.role,
         });
+      } catch {
+        // Never block login if audit logging fails
       }
     }
 

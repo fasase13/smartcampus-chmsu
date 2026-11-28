@@ -132,6 +132,14 @@ export default function PortalShell({
     setSigningOut(true);
     try {
       const supabase = createClient();
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_out",
+          p_portal: profile?.role || "office",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
       await supabase.auth.signOut();
       router.push("/");
       router.refresh();
@@ -186,7 +194,7 @@ export default function PortalShell({
                 <span className="truncate text-sm font-bold text-chmsu-forest">
                   CHMSU {campusName}
                 </span>
-                <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
+                <span className="hidden items-center rounded-md border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                   {roleLabel}
                 </span>
               </div>

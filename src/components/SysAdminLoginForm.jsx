@@ -61,6 +61,15 @@ export default function SysAdminLoginForm() {
         return;
       }
 
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_in",
+          p_portal: "superadmin",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
+
       router.push("/superadmin");
       router.refresh();
     } catch {

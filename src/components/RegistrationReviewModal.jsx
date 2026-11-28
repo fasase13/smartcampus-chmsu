@@ -237,7 +237,7 @@ export default function RegistrationReviewModal({
                 <div>
                   <dt className="font-semibold text-slate-500">Role</dt>
                   <dd className="mt-0.5">
-                    <span className="inline-flex rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                    <span className="inline-flex rounded-md bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
                       {ROLE_LABELS[user.requested_role ?? "student"] ??
                         user.requested_role ??
                         "Student"}
@@ -382,7 +382,7 @@ export default function RegistrationReviewModal({
                       return (
                         <label
                           key={opt.key}
-                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-3 py-1 text-xs font-semibold transition ${
                             checked
                               ? "border-amber-600 bg-amber-600 text-white"
                               : "border-amber-300 bg-white text-amber-900 hover:border-amber-500"

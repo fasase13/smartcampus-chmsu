@@ -131,6 +131,14 @@ export default function FacultyPortalClient({
     setSigningOut(true);
     try {
       const supabase = createClient();
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_out",
+          p_portal: profile?.role || "faculty",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
       await supabase.auth.signOut();
       router.push("/");
       router.refresh();
@@ -441,12 +449,12 @@ export default function FacultyPortalClient({
     setExistingAttachment(
       item.attachment_url
         ? {
-            attachment_url: item.attachment_url,
-            attachment_path: item.attachment_path,
-            attachment_name: item.attachment_name,
-            attachment_type: item.attachment_type,
-            attachment_size: item.attachment_size,
-          }
+          attachment_url: item.attachment_url,
+          attachment_path: item.attachment_path,
+          attachment_name: item.attachment_name,
+          attachment_type: item.attachment_type,
+          attachment_size: item.attachment_size,
+        }
         : null
     );
     setRemovedAttachmentPath(null);
@@ -676,7 +684,7 @@ export default function FacultyPortalClient({
                 <span className="truncate text-sm font-bold text-chmsu-forest">
                   CHMSU {campus.name}
                 </span>
-                <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
+                <span className="hidden items-center rounded-md border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                   {roleLabel}
                 </span>
               </div>
@@ -772,7 +780,7 @@ export default function FacultyPortalClient({
 
                 {isTeaching && (
                   <span
-                    className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
+                    className={`inline-flex items-center gap-2 rounded-md border px-3.5 py-1.5 text-xs font-bold ${currentStatusMeta.badgeClass}`}
                   >
                     <span
                       className={`h-2.5 w-2.5 rounded-full ${currentStatusMeta.dotClass}`}
@@ -1174,7 +1182,7 @@ export default function FacultyPortalClient({
                       announcements you have published.
                     </p>
                   </div>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
+                  <span className="rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700 tabular-nums">
                     {myAnnouncements.length} published
                   </span>
                 </div>
@@ -1233,12 +1241,12 @@ export default function FacultyPortalClient({
 
                               <td className="px-4 py-3.5 align-top">
                                 {item.campus_id === null ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
                                     <Globe className="h-3 w-3" />
                                     University-Wide
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-green/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest">
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-chmsu-green/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest">
                                     <Building2 className="h-3 w-3" />
                                     {campus.name}
                                   </span>
@@ -1261,14 +1269,14 @@ export default function FacultyPortalClient({
                               <td className="px-4 py-3.5 align-top">
                                 <div className="flex flex-wrap gap-1.5">
                                   <span
-                                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${item.is_active
+                                    className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${item.is_active
                                       ? "bg-emerald-100 text-emerald-800"
                                       : "bg-slate-200 text-slate-600"
                                       }`}
                                   >
                                     {item.is_active ? "Active" : "Inactive"}
                                   </span>
-                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                                     {item.is_public ? "Public" : "Internal"}
                                   </span>
                                 </div>

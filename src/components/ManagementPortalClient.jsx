@@ -12,10 +12,8 @@ import {
   Bell,
   Building2,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Clock,
   CreditCard,
   Download,
@@ -40,6 +38,11 @@ import PrivacyTermsGate from "@/components/PrivacyTermsGate";
 import ManagementQrTrackerPanel from "@/components/ManagementQrTrackerPanel";
 import LiveNotificationBell from "@/components/LiveNotificationBell";
 import HeaderAccountMenu from "@/components/HeaderAccountMenu";
+import {
+  formatAuditActionLabel,
+  formatAuditDetailSummary,
+  getAuditLogCategory,
+} from "@/lib/auditLogFormat";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -126,6 +129,7 @@ function isDocumentAuditLog(log) {
 
 export default function ManagementPortalClient({
   profile,
+  initialTab = "overview",
   campuses,
   initialDocuments,
   initialUsers,
@@ -149,7 +153,7 @@ export default function ManagementPortalClient({
   const assignedCampusId = profile?.campus_id ?? assignedCampus?.id ?? "";
 
   // Navigation & Global Controls
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(initialTab || "overview");
   const [trackerCameraActive, setTrackerCameraActive] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
@@ -185,6 +189,10 @@ export default function ManagementPortalClient({
       clearInterval(timer);
     };
   }, []);
+
+  // Document Alerts filter state (strictly scoped to assignedCampusId)
+  const [docAlertSearch, setDocAlertSearch] = useState("");
+  const [docAlertOverdueOnly, setDocAlertOverdueOnly] = useState(false);
 
   // Inspect Document Trail Modal
   const [inspectDoc, setInspectDoc] = useState(null);
@@ -223,7 +231,6 @@ export default function ManagementPortalClient({
   const [auditDateFrom, setAuditDateFrom] = useState("");
   const [auditDateTo, setAuditDateTo] = useState("");
   const [auditPage, setAuditPage] = useState(1);
-  const [expandedAuditId, setExpandedAuditId] = useState(null);
 
   // Refetch helpers
   const refreshDocuments = useCallback(async () => {
@@ -383,6 +390,29 @@ export default function ManagementPortalClient({
         d.origin_campus_id === assignedCampusId
     );
   }, [documents, assignedCampusId]);
+
+  // Document Alerts filtered list (strictly scoped to assignedCampusId)
+  const filteredAlertDocuments = useMemo(() => {
+    const q = docAlertSearch.trim().toLowerCase();
+    return campusScopedDocs
+      .filter((d) => {
+        if (docAlertOverdueOnly && !isDocOverdue(d)) return false;
+        if (!q) return true;
+        return (
+          d.tracking_code?.toLowerCase().includes(q) ||
+          d.title?.toLowerCase().includes(q) ||
+          d.current_office?.toLowerCase().includes(q) ||
+          d.sender_office?.toLowerCase().includes(q) ||
+          d.document_type?.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        const aOverdue = isDocOverdue(a) ? 1 : 0;
+        const bOverdue = isDocOverdue(b) ? 1 : 0;
+        if (aOverdue !== bOverdue) return bOverdue - aOverdue;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [campusScopedDocs, docAlertOverdueOnly, docAlertSearch]);
 
   // Date-filtered documents for Tab B analytics & reports
   const reportScopedDocs = useMemo(() => {
@@ -878,20 +908,18 @@ export default function ManagementPortalClient({
       "Campus",
       "Actor Name",
       "Actor Role",
-      "Action",
-      "Entity Type",
-      "Entity ID",
-      "Metadata JSON",
+      "Log Category",
+      "Action Performed",
+      "Details",
     ];
     const rows = filteredAuditLogs.map((log) => [
-      log.created_at,
+      formatDateTime(log.created_at),
       campusMap[log.campus_id]?.name ?? "University-Wide",
       log.actor?.full_name ?? log.actor?.email ?? "System",
-      log.actor_role ?? "",
-      log.action,
-      log.entity_type,
-      log.entity_id ?? "",
-      JSON.stringify(log.metadata ?? {}),
+      ROLE_LABELS[log.actor_role] ?? log.actor_role ?? "",
+      getAuditLogCategory(log).label,
+      formatAuditActionLabel(log.action),
+      formatAuditDetailSummary(log),
     ]);
     downloadCsvFile(`chmsu-document-logs-${today}.csv`, headers, rows);
   }
@@ -900,6 +928,14 @@ export default function ManagementPortalClient({
     setSigningOut(true);
     try {
       const supabase = createClient();
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_out",
+          p_portal: "management",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
       await supabase.auth.signOut();
       router.push("/");
       router.refresh();
@@ -917,6 +953,13 @@ export default function ManagementPortalClient({
       id: "overview",
       label: "Overview & Delay Alerts",
       icon: ShieldAlert,
+      badge: kpis.overdueCount,
+      visible: true,
+    },
+    {
+      id: "alerts",
+      label: "Document Alerts",
+      icon: AlertTriangle,
       badge: kpis.overdueCount,
       visible: true,
     },
@@ -998,7 +1041,7 @@ export default function ManagementPortalClient({
                   <span className="truncate text-sm font-bold text-chmsu-forest">
                     {scopeLabel}
                   </span>
-                  <span className="hidden items-center rounded-full border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
+                  <span className="hidden items-center rounded-md border border-chmsu-forest/15 bg-chmsu-forest/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-forest sm:inline-flex">
                     Institutional Management
                   </span>
                 </div>
@@ -1007,7 +1050,7 @@ export default function ManagementPortalClient({
 
             <div className="flex items-center gap-2.5">
               {unreadAlerts > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-800 tabular-nums">
+                <span className="inline-flex items-center gap-1 rounded-md bg-red-100 px-2.5 py-1 text-xs font-bold text-red-800 tabular-nums">
                   <Bell className="h-3.5 w-3.5 text-red-600" />
                   {unreadAlerts} Alerts
                 </span>
@@ -1030,7 +1073,7 @@ export default function ManagementPortalClient({
               <LiveNotificationBell
                 userId={profile?.id}
                 onNavigate={(item) => {
-                  if (item.type === "delay_alert") handleSelectTab("overview");
+                  if (item.type === "delay_alert") handleSelectTab("alerts");
                   else handleSelectTab("audit");
                 }}
               />
@@ -1233,7 +1276,7 @@ export default function ManagementPortalClient({
                       </p>
                     </div>
                   </div>
-                  <span className="rounded-full bg-[#DC2626] px-3 py-1 text-xs font-bold text-white tabular-nums">
+                  <span className="rounded-md bg-[#DC2626] px-3 py-1 text-xs font-bold text-white tabular-nums">
                     {overdueDocuments.length} Overdue
                   </span>
                 </div>
@@ -1262,7 +1305,7 @@ export default function ManagementPortalClient({
                               <span className="font-mono text-xs font-bold text-[#DC2626]">
                                 {doc.tracking_code}
                               </span>
-                              <span className="rounded-full bg-[#DC2626] px-2.5 py-0.5 text-[11px] font-bold text-white tabular-nums">
+                              <span className="rounded-md bg-[#DC2626] px-2.5 py-0.5 text-[11px] font-bold text-white tabular-nums">
                                 Overdue by {formatSlaDays(overdueDays)}
                               </span>
                               <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold capitalize text-slate-700">
@@ -1303,6 +1346,171 @@ export default function ManagementPortalClient({
                   </div>
                 )}
               </section>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* TAB A2: DOCUMENT ALERTS (CAMPUS-SCOPED, STRICTLY READ-ONLY)    */}
+          {/* ============================================================== */}
+          {activeTab === "alerts" && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h1 className="text-2xl font-bold text-chmsu-forest">
+                    Document Alerts
+                  </h1>
+                  <p className="text-sm text-slate-600">
+                    Monitor campus documents, review red SLA delay alerts, and
+                    inspect full custody trails for {scopeLabel}.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={runningSla}
+                  onClick={() => runSlaCheck(false)}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-chmsu-flame px-3.5 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+                >
+                  {runningSla ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-3.5 w-3.5" />
+                  )}
+                  Run SLA Delay Check
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-3">
+                <div className="relative sm:col-span-2">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={docAlertSearch}
+                    onChange={(e) => setDocAlertSearch(e.target.value)}
+                    placeholder="Search tracking code, title, office..."
+                    className="w-full rounded-xl border border-chmsu-border bg-chmsu-canvas py-2 pl-9 pr-3 text-sm outline-none focus:border-chmsu-green focus:bg-white"
+                  />
+                </div>
+                <label
+                  className={`inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+                    kpis.overdueCount > 0
+                      ? "border-red-300 bg-red-50 text-red-800 hover:bg-red-100"
+                      : "border-chmsu-border bg-chmsu-canvas text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={docAlertOverdueOnly}
+                    onChange={(e) => setDocAlertOverdueOnly(e.target.checked)}
+                    className="h-4 w-4 accent-red-600"
+                  />
+                  Overdue Only ({kpis.overdueCount})
+                </label>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
+                {filteredAlertDocuments.length === 0 ? (
+                  <p className="p-8 text-center text-sm text-slate-500">
+                    No campus documents match your current filters.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-5 py-3 text-left">Tracking Code</th>
+                          <th className="px-4 py-3 text-left">
+                            Title &amp; Office
+                          </th>
+                          <th className="px-4 py-3 text-left">SLA Target</th>
+                          <th className="px-4 py-3 text-left">Status</th>
+                          <th className="px-5 py-3 text-left">Trail</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-chmsu-border">
+                        {filteredAlertDocuments.slice(0, 100).map((doc) => {
+                          const overdue = isDocOverdue(doc);
+                          const overdueDays = overdue
+                            ? getOverdueDays(doc)
+                            : 0;
+                          const slaDays = doc.sla_hours
+                            ? doc.sla_hours / 24
+                            : 3;
+                          const statusMeta = DOCUMENT_STATUS_META[
+                            doc.status
+                          ] ?? {
+                            label: doc.status,
+                            badgeClass:
+                              "bg-slate-100 text-slate-800 border-slate-200",
+                          };
+                          return (
+                            <tr
+                              key={doc.id}
+                              onClick={() => openInspectModal(doc)}
+                              className={`cursor-pointer transition ${
+                                overdue
+                                  ? "bg-red-50/40 hover:bg-red-50/80"
+                                  : "hover:bg-chmsu-canvas/60"
+                              }`}
+                            >
+                              <td className="px-5 py-3 text-left font-mono text-xs font-bold text-chmsu-forest">
+                                {doc.tracking_code}
+                              </td>
+                              <td className="px-4 py-3 text-left">
+                                <p className="font-semibold text-slate-900">
+                                  {doc.title}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {doc.current_office} &bull;{" "}
+                                  {doc.document_type}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 text-left text-xs tabular-nums">
+                                <p className="font-semibold text-slate-800">
+                                  {formatSlaDays(slaDays)}
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  Due {formatDateTime(doc.due_at)}
+                                </p>
+                              </td>
+                              <td className="px-4 py-3 text-left">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span
+                                    className={`inline-flex rounded-md border px-2.5 py-0.5 text-xs font-semibold ${
+                                      overdue
+                                        ? "border-red-300 bg-red-100 text-red-900"
+                                        : statusMeta.badgeClass
+                                    }`}
+                                  >
+                                    {overdue ? "Delayed" : statusMeta.label}
+                                  </span>
+                                  {overdue && overdueDays > 0 && (
+                                    <span className="inline-flex rounded-md bg-[#DC2626] px-2 py-0.5 text-[11px] font-bold text-white tabular-nums">
+                                      +{formatSlaDays(overdueDays)}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-5 py-3 text-left">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openInspectModal(doc);
+                                  }}
+                                  className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest transition hover:border-chmsu-green hover:bg-chmsu-canvas"
+                                >
+                                  Inspect Trail
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1430,7 +1638,7 @@ export default function ManagementPortalClient({
                             </td>
                             <td className="px-4 py-3 text-right tabular-nums">
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${b.overdue > 0
+                                className={`rounded-md px-2.5 py-0.5 text-xs font-bold ${b.overdue > 0
                                     ? "bg-red-100 text-[#DC2626]"
                                     : "bg-emerald-50 text-emerald-700"
                                   }`}
@@ -1549,7 +1757,7 @@ export default function ManagementPortalClient({
                   </p>
                 </div>
 
-                <span className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900 tabular-nums">
+                <span className="inline-flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-900 tabular-nums">
                   <Clock className="h-3.5 w-3.5 text-amber-600" />
                   {pendingRegistrations.length} Pending Review
                 </span>
@@ -1601,7 +1809,7 @@ export default function ManagementPortalClient({
                               CHMSU {campusMap[u.campus_id]?.name ?? "Unassigned"}
                             </td>
                             <td className="px-4 py-3.5">
-                              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                              <span className="rounded-md bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
                                 {ROLE_LABELS[u.requested_role ?? "student"] ??
                                   u.requested_role ??
                                   "Student"}
@@ -1725,7 +1933,7 @@ export default function ManagementPortalClient({
                             </p>
                           </td>
                           <td className="px-4 py-3">
-                            <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                            <span className="rounded-md bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
                               {ROLE_LABELS[u.role] ?? u.role}
                             </span>
                           </td>
@@ -1735,7 +1943,7 @@ export default function ManagementPortalClient({
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1.5">
                               <span
-                                className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${u.is_active
+                                className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${u.is_active
                                     ? "bg-emerald-100 text-emerald-800"
                                     : "bg-red-100 text-red-800"
                                   }`}
@@ -1743,7 +1951,7 @@ export default function ManagementPortalClient({
                                 {u.is_active ? "Active" : "Inactive"}
                               </span>
                               {u.show_on_kiosk && (
-                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                                <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
                                   Kiosk
                                 </span>
                               )}
@@ -1854,73 +2062,65 @@ export default function ManagementPortalClient({
                     No document log entries match your filters.
                   </p>
                 ) : (
-                  <div className="divide-y divide-chmsu-border">
-                    {pagedAuditLogs.map((log) => {
-                      const isExpanded = expandedAuditId === log.id;
-                      return (
-                        <div key={log.id} className="px-5 py-3 text-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-xs font-bold text-chmsu-forest">
-                                {log.action}
-                              </span>
-                              <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                                {log.entity_type}
-                              </span>
-                              {log.actor_role && (
-                                <span className="rounded-full bg-chmsu-navy/10 px-2 py-0.5 text-[11px] font-semibold text-chmsu-navy">
-                                  {log.actor_role}
-                                </span>
-                              )}
-                              <span className="text-xs text-slate-600">
-                                {log.actor?.full_name || log.actor?.email || "System"}
-                              </span>
-                              <span className="text-xs text-slate-400">
-                                &bull;{" "}
-                                {campusMap[log.campus_id]?.name ??
-                                  "University-Wide"}
-                              </span>
-                            </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-5 py-3 text-left">Timestamp</th>
+                          <th className="px-4 py-3 text-left">Actor / User</th>
+                          <th className="px-4 py-3 text-left">Log Category</th>
+                          <th className="px-5 py-3 text-left">Action Performed</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-chmsu-border">
+                        {pagedAuditLogs.map((log) => {
+                          const category = getAuditLogCategory(log);
+                          const actionLabel = formatAuditActionLabel(log.action);
+                          const detailSummary = formatAuditDetailSummary(log, {
+                            roleLabels: ROLE_LABELS,
+                            campusMap,
+                          });
+                          const actorName =
+                            log.actor?.full_name ||
+                            log.metadata?.full_name ||
+                            "System";
+                          const actorEmail =
+                            log.actor?.email || log.metadata?.email || "—";
 
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-500 tabular-nums">
+                          return (
+                            <tr
+                              key={log.id}
+                              className="transition hover:bg-slate-50/70"
+                            >
+                              <td className="whitespace-nowrap px-5 py-3.5 text-left align-top text-xs text-slate-600 tabular-nums">
                                 {formatDateTime(log.created_at)}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setExpandedAuditId(
-                                    isExpanded ? null : log.id
-                                  )
-                                }
-                                className="inline-flex items-center gap-1 rounded-lg border border-chmsu-border px-2 py-1 text-[11px] font-semibold text-slate-600 hover:border-chmsu-green"
-                              >
-                                JSON
-                                {isExpanded ? (
-                                  <ChevronUp className="h-3 w-3" />
-                                ) : (
-                                  <ChevronDown className="h-3 w-3" />
+                              </td>
+                              <td className="px-4 py-3.5 text-left align-top">
+                                <p className="font-semibold text-slate-900">
+                                  {actorName}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-500">
+                                  {actorEmail}
+                                </p>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3.5 text-left align-top text-sm font-medium text-slate-700">
+                                {category.label}
+                              </td>
+                              <td className="px-5 py-3.5 text-left align-top">
+                                <p className="font-semibold text-chmsu-forest">
+                                  {actionLabel}
+                                </p>
+                                {detailSummary && (
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {detailSummary}
+                                  </p>
                                 )}
-                              </button>
-                            </div>
-                          </div>
-
-                          {isExpanded && (
-                            <pre className="mt-2.5 overflow-x-auto rounded-xl border border-slate-200 bg-slate-950 p-3 font-mono text-xs text-emerald-300">
-                              {JSON.stringify(
-                                {
-                                  id: log.id,
-                                  entity_id: log.entity_id,
-                                  metadata: log.metadata,
-                                },
-                                null,
-                                2
-                              )}
-                            </pre>
-                          )}
-                        </div>
-                      );
-                    })}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
 
@@ -1965,98 +2165,184 @@ export default function ManagementPortalClient({
         </main>
       </div>
 
-      {/* Inspect Document Custody Trail Modal */}
-      {inspectDoc && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Overdue Document Custody Trail"
-          className="no-print fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs"
-        >
-          <div className="flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-red-200 bg-[#DC2626] px-5 py-4 text-white">
-              <div>
-                <p className="font-mono text-xs font-bold text-red-100">
-                  {inspectDoc.tracking_code}
-                </p>
-                <h3 className="text-base font-bold">{inspectDoc.title}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInspectDoc(null)}
-                aria-label="Close panel"
-                className="rounded-lg p-1.5 text-white/80 hover:bg-white/10"
+      {/* Inspect Document Custody Trail Modal (Strictly Read-Only) */}
+      {inspectDoc && (() => {
+        const inspectOverdue = isDocOverdue(inspectDoc);
+        const inspectOverdueDays = inspectOverdue
+          ? getOverdueDays(inspectDoc)
+          : 0;
+        const inspectSlaDays = inspectDoc.sla_hours
+          ? inspectDoc.sla_hours / 24
+          : 3;
+        const inspectStatusMeta = DOCUMENT_STATUS_META[inspectDoc.status] ?? {
+          label: inspectDoc.status,
+          badgeClass: "bg-slate-100 text-slate-800 border-slate-200",
+        };
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Document Custody Trail"
+            className="no-print fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs"
+          >
+            <div className="flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
+              <div
+                className={`flex items-center justify-between border-b px-5 py-4 text-white ${
+                  inspectOverdue
+                    ? "border-red-200 bg-[#DC2626]"
+                    : "border-chmsu-forest bg-chmsu-forest"
+                }`}
               >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
-              {inspectDoc.file_path && (
-                <div className="flex items-center justify-between rounded-xl border border-chmsu-border bg-chmsu-canvas p-3">
-                  <span className="truncate text-xs font-semibold text-slate-800">
-                    {inspectDoc.file_name}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={downloadingFile}
-                    onClick={() => handleSignedDownload(inspectDoc)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-chmsu-navy px-3 py-1.5 text-xs font-semibold text-white"
+                <div>
+                  <p
+                    className={`font-mono text-xs font-bold ${
+                      inspectOverdue ? "text-red-100" : "text-chmsu-gold"
+                    }`}
                   >
-                    <Download className="h-3.5 w-3.5" />
-                    Download
-                  </button>
-                </div>
-              )}
-
-              <div>
-                <h4 className="text-sm font-bold text-chmsu-forest">
-                  Full Custody Timeline
-                </h4>
-                {loadingRoutes ? (
-                  <p className="mt-3 flex items-center gap-2 text-xs text-slate-500">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading custody trail...
+                    {inspectDoc.tracking_code}
                   </p>
-                ) : (
-                  <ol className="mt-4 space-y-4 border-l-2 border-red-200 pl-4">
-                    {inspectRoutes.map((step) => (
-                      <li key={step.id} className="relative text-sm">
-                        <span
-                          className={`absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-white ${step.action === "delay_flagged"
-                              ? "bg-[#DC2626]"
-                              : "bg-chmsu-forest"
-                            }`}
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-bold text-slate-900">
-                            {ROUTE_ACTION_LABELS[step.action] ?? step.action}
-                          </span>
-                          <span className="text-[11px] text-slate-500 tabular-nums">
-                            {formatDateTime(step.created_at)}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-700">
-                          {step.from_office ? `${step.from_office} → ` : ""}
-                          <span className="font-semibold text-chmsu-navy">
-                            {step.to_office}
-                          </span>{" "}
-                          ({campusMap[step.campus_id]?.name ?? "CHMSU"})
-                        </p>
-                        {step.remarks && (
-                          <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-                            {step.remarks}
-                          </p>
-                        )}
-                      </li>
-                    ))}
-                  </ol>
+                  <h3 className="text-base font-bold">{inspectDoc.title}</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInspectDoc(null)}
+                  aria-label="Close panel"
+                  className="rounded-lg p-1.5 text-white/80 hover:bg-white/10"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 space-y-4 overflow-y-auto p-5">
+                {inspectOverdue && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-900">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#DC2626]" />
+                    <div>
+                      <p className="font-bold">SLA Delay Alert Flagged</p>
+                      <p className="mt-0.5 text-red-800 tabular-nums">
+                        Overdue by {formatSlaDays(inspectOverdueDays)} &bull;
+                        Due {formatDateTime(inspectDoc.due_at)}
+                      </p>
+                    </div>
+                  </div>
                 )}
+
+                <div className="grid grid-cols-2 gap-3 rounded-xl border border-chmsu-border bg-chmsu-canvas p-3.5 text-xs">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Status
+                    </p>
+                    <div className="mt-1">
+                      <span
+                        className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${
+                          inspectOverdue
+                            ? "border-red-300 bg-red-100 text-red-900"
+                            : inspectStatusMeta.badgeClass
+                        }`}
+                      >
+                        {inspectOverdue ? "Delayed" : inspectStatusMeta.label}
+                      </span>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      SLA Target
+                    </p>
+                    <p className="mt-1 font-bold text-slate-900 tabular-nums">
+                      {formatSlaDays(inspectSlaDays)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Current Office
+                    </p>
+                    <p className="mt-1 font-semibold text-slate-900">
+                      {inspectDoc.current_office || "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Due Date
+                    </p>
+                    <p className="mt-1 font-semibold text-slate-900 tabular-nums">
+                      {formatDateTime(inspectDoc.due_at)}
+                    </p>
+                  </div>
+                </div>
+
+                {inspectDoc.file_path && (
+                  <div className="flex items-center justify-between rounded-xl border border-chmsu-border bg-chmsu-canvas p-3">
+                    <span className="truncate text-xs font-semibold text-slate-800">
+                      {inspectDoc.file_name}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={downloadingFile}
+                      onClick={() => handleSignedDownload(inspectDoc)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-chmsu-navy px-3 py-1.5 text-xs font-semibold text-white"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download
+                    </button>
+                  </div>
+                )}
+
+                <div>
+                  <h4 className="text-sm font-bold text-chmsu-forest">
+                    Full Custody Timeline
+                  </h4>
+                  {loadingRoutes ? (
+                    <p className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Loading custody trail...
+                    </p>
+                  ) : (
+                    <ol
+                      className={`mt-4 space-y-4 border-l-2 pl-4 ${
+                        inspectOverdue
+                          ? "border-red-200"
+                          : "border-chmsu-border"
+                      }`}
+                    >
+                      {inspectRoutes.map((step) => (
+                        <li key={step.id} className="relative text-sm">
+                          <span
+                            className={`absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-white ${
+                              step.action === "delay_flagged"
+                                ? "bg-[#DC2626]"
+                                : "bg-chmsu-forest"
+                            }`}
+                          />
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-slate-900">
+                              {ROUTE_ACTION_LABELS[step.action] ?? step.action}
+                            </span>
+                            <span className="text-[11px] text-slate-500 tabular-nums">
+                              {formatDateTime(step.created_at)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-700">
+                            {step.from_office ? `${step.from_office} → ` : ""}
+                            <span className="font-semibold text-chmsu-navy">
+                              {step.to_office}
+                            </span>{" "}
+                            ({campusMap[step.campus_id]?.name ?? "CHMSU"})
+                          </p>
+                          {step.remarks && (
+                            <p className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                              {step.remarks}
+                            </p>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Admin View ID Photos & Registration Verification Modal */}
       {reviewUser && isAdmin && (

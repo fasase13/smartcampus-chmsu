@@ -793,12 +793,12 @@ export default function OfficeScannerClient({
                       {activeDoc.tracking_code}
                     </span>
                     {wasScannedViaQr && (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-800">
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-800">
                         QR Verified
                       </span>
                     )}
                     {activeSla?.overdue && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase text-white">
                         <AlertTriangle className="h-3 w-3" />
                         {activeSla.label}
                       </span>
@@ -818,7 +818,7 @@ export default function OfficeScannerClient({
 
                 {activeStatusMeta && (
                   <span
-                    className={`rounded-full border px-3 py-1 text-xs font-bold ${activeStatusMeta.badgeClass}`}
+                    className={`rounded-md border px-3 py-1 text-xs font-bold ${activeStatusMeta.badgeClass}`}
                   >
                     {activeStatusMeta.label}
                   </span>
@@ -1152,7 +1152,7 @@ export default function OfficeScannerClient({
                         {doc.tracking_code}
                       </span>
                       <span
-                        className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusMeta.badgeClass}`}
+                        className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${statusMeta.badgeClass}`}
                       >
                         {statusMeta.label}
                       </span>
@@ -1162,7 +1162,7 @@ export default function OfficeScannerClient({
                         {priorityMeta.label}
                       </span>
                       {sla.overdue && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">
                           <AlertTriangle className="h-3 w-3" />
                           {sla.label}
                         </span>

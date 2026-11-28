@@ -62,7 +62,7 @@ function StepIndicator({ currentStep }) {
         return (
           <li key={step.num} className="flex items-center gap-2">
             <span
-              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-bold ${
                 isDone
                   ? "bg-chmsu-green text-white"
                   : isActive

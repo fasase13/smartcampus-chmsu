@@ -6,32 +6,29 @@ import {
   Activity,
   AlertCircle,
   AlertTriangle,
-  BarChart3,
   Building2,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
+  Clock,
   CreditCard,
-  Download,
   Edit3,
   Eye,
-  FileSpreadsheet,
   Globe,
+  LayoutDashboard,
   Loader2,
   Megaphone,
   Pin,
   Plus,
-  RefreshCw,
   Search,
-  ShieldAlert,
   Trash2,
   UserCheck,
+  UserX,
   Users,
   Wrench,
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import RegistrationReviewModal from "@/components/RegistrationReviewModal";
+import UserDetailsModal from "@/components/UserDetailsModal";
 import LiveNotificationBell from "@/components/LiveNotificationBell";
 import HeaderAccountMenu from "@/components/HeaderAccountMenu";
 import {
@@ -40,6 +37,12 @@ import {
 } from "@/lib/announcementAttachments";
 import AnnouncementAttachmentPicker from "@/components/AnnouncementAttachmentPicker";
 import AnnouncementAttachment from "@/components/AnnouncementAttachment";
+import {
+  formatAuditActionLabel,
+  formatAuditDetailSummary,
+  getAuditLogCategory,
+  isDocumentLog,
+} from "@/lib/auditLogFormat";
 import UserProfileView from "@/components/UserProfileView";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -49,13 +52,8 @@ import {
   ALL_ROLES,
   ANNOUNCEMENT_CATEGORIES,
   ANNOUNCEMENT_PRIORITIES,
-  DOCUMENT_STATUS_META,
   ROLE_LABELS,
   ROLES,
-  ROUTE_ACTION_LABELS,
-  STORAGE_BUCKETS,
-  formatSlaDays,
-  getCampusAdminTitle,
   normalizeAnnouncementCategory,
 } from "@/lib/constants";
 
@@ -70,37 +68,61 @@ function formatDateTime(isoString) {
   }).format(new Date(isoString));
 }
 
-function isDocOverdue(doc) {
-  if (!doc) return false;
-  if (doc.status === "completed" || doc.status === "archived") return false;
-  if (doc.is_delayed) return true;
-  return Boolean(doc.due_at && new Date(doc.due_at) < new Date());
+const CAMPUS_DONUT_COLORS = {
+  talisay: "#143D29",
+  alijis: "#2563EB",
+  binalbagan: "#F59E0B",
+  "fortune-towne": "#EF4444",
+  fortunetowne: "#EF4444",
+};
+
+const CAMPUS_DONUT_FALLBACK_COLORS = [
+  "#143D29",
+  "#2563EB",
+  "#F59E0B",
+  "#EF4444",
+];
+
+function polarToCartesian(cx, cy, radius, angleInDegrees) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
+  return {
+    x: cx + radius * Math.cos(angleInRadians),
+    y: cy + radius * Math.sin(angleInRadians),
+  };
 }
 
-function escapeCsvCell(value) {
-  const str = String(value ?? "");
-  if (/[",\n\r]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
+function describeDonutArc(cx, cy, outerRadius, innerRadius, startAngle, endAngle) {
+  const outerStart = polarToCartesian(cx, cy, outerRadius, endAngle);
+  const outerEnd = polarToCartesian(cx, cy, outerRadius, startAngle);
+  const innerStart = polarToCartesian(cx, cy, innerRadius, endAngle);
+  const innerEnd = polarToCartesian(cx, cy, innerRadius, startAngle);
+  const largeArcFlag = endAngle - startAngle > 180 ? "1" : "0";
 
-function downloadCsvFile(filename, headers, rows) {
-  const lines = [
-    headers.map(escapeCsvCell).join(","),
-    ...rows.map((row) => row.map(escapeCsvCell).join(",")),
-  ];
-  const blob = new Blob([lines.join("\r\n")], {
-    type: "text/csv;charset=utf-8;",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  return [
+    "M",
+    outerStart.x.toFixed(3),
+    outerStart.y.toFixed(3),
+    "A",
+    outerRadius,
+    outerRadius,
+    0,
+    largeArcFlag,
+    0,
+    outerEnd.x.toFixed(3),
+    outerEnd.y.toFixed(3),
+    "L",
+    innerEnd.x.toFixed(3),
+    innerEnd.y.toFixed(3),
+    "A",
+    innerRadius,
+    innerRadius,
+    0,
+    largeArcFlag,
+    1,
+    innerStart.x.toFixed(3),
+    innerStart.y.toFixed(3),
+    "Z",
+  ].join(" ");
 }
 
 const EMPTY_ANNOUNCEMENT = {
@@ -116,11 +138,12 @@ const EMPTY_ANNOUNCEMENT = {
 
 export default function SuperadminPortalClient({
   profile,
+  initialTab = "dashboard",
   campuses,
   initialUsers,
   initialAnnouncements,
-  initialDocuments,
   initialAuditLogs,
+  initialDocumentRoutes = [],
   initialSettings,
 }) {
   const router = useRouter();
@@ -130,7 +153,14 @@ export default function SuperadminPortalClient({
     [campuses]
   );
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const normalizedInitialTab =
+    initialTab === "overview" ||
+    initialTab === "analytics" ||
+    initialTab === "alerts" ||
+    initialTab === "documents"
+      ? "dashboard"
+      : initialTab || "dashboard";
+  const [activeTab, setActiveTab] = useState(normalizedInitialTab);
   const [signingOut, setSigningOut] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const { collapsed, mobileOpen, toggleSidebar, closeMobile } =
@@ -138,29 +168,24 @@ export default function SuperadminPortalClient({
 
   const [users, setUsers] = useState(initialUsers);
   const [announcements, setAnnouncements] = useState(initialAnnouncements);
-  const [documents, setDocuments] = useState(initialDocuments);
   const [auditLogs, setAuditLogs] = useState(initialAuditLogs);
+  const [documentRoutes, setDocumentRoutes] = useState(initialDocumentRoutes);
   const [settings, setSettings] = useState(initialSettings);
 
-  // Analytics & Document Alerts state
+  // Dashboard campus filter & donut hover state
   const [analyticsCampusId, setAnalyticsCampusId] = useState("all");
-  const [docSearch, setDocSearch] = useState("");
-  const [docCampusFilter, setDocCampusFilter] = useState("all");
-  const [docOverdueOnly, setDocOverdueOnly] = useState(false);
-  const [runningSla, setRunningSla] = useState(false);
-  const [inspectDoc, setInspectDoc] = useState(null);
-  const [inspectRoutes, setInspectRoutes] = useState([]);
-  const [loadingRoutes, setLoadingRoutes] = useState(false);
-  const [downloadingFile, setDownloadingFile] = useState(false);
+  const [hoveredCampusId, setHoveredCampusId] = useState(null);
 
-  // Users & Roles state (read-only details + deactivate/reactivate only)
+  // Platform Users state (read-only details + deactivate/reactivate only)
   const [userSearch, setUserSearch] = useState("");
   const [userCampusFilter, setUserCampusFilter] = useState("all");
   const [userRoleFilter, setUserRoleFilter] = useState("all");
+  const [userStatusFilter, setUserStatusFilter] = useState("all"); // all | active | inactive
   const [selectedUser, setSelectedUser] = useState(null);
   const [togglingUserStatus, setTogglingUserStatus] = useState(false);
 
   // Announcements editor state
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
   const [announcementForm, setAnnouncementForm] = useState(EMPTY_ANNOUNCEMENT);
   const [announcementAttachmentFile, setAnnouncementAttachmentFile] =
     useState(null);
@@ -184,32 +209,20 @@ export default function SuperadminPortalClient({
   const [confirmEnableMaint, setConfirmEnableMaint] = useState(false);
   const [savingMaint, setSavingMaint] = useState(false);
 
-  // Audit logs filter
+  // System & Document Logs filter
+  const [auditSubTab, setAuditSubTab] = useState("system"); // system | document
   const [auditQuery, setAuditQuery] = useState("");
   const [auditCampusFilter, setAuditCampusFilter] = useState("all");
-  const [expandedAuditId, setExpandedAuditId] = useState(null);
 
   const refreshUsers = useCallback(async () => {
     const supabase = createClient();
     const { data } = await supabase
       .from("profiles")
       .select(
-        "id, campus_id, email, full_name, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, is_teaching, show_on_kiosk, is_active, created_at"
+        "id, campus_id, email, full_name, avatar_url, role, requested_role, employee_or_student_id, approval_status, profile_completed, id_front_path, id_back_path, rejection_reason, department, program_or_course, job_title, office_location, is_teaching, show_on_kiosk, is_active, created_at"
       )
       .order("created_at", { ascending: false });
     if (data) setUsers(data);
-  }, []);
-
-  const refreshDocuments = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from("documents")
-      .select(
-        "id, tracking_code, qr_token, origin_campus_id, current_campus_id, title, description, document_type, priority, status, sender_name, sender_office, current_office, current_holder_id, created_by, file_path, file_name, file_mime_type, file_size_bytes, sla_hours, due_at, is_delayed, delayed_at, completed_at, created_at, updated_at"
-      )
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (data) setDocuments(data);
   }, []);
 
   const refreshAnnouncements = useCallback(async () => {
@@ -227,14 +240,24 @@ export default function SuperadminPortalClient({
 
   const refreshAuditLogs = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
-      .from("audit_logs")
-      .select(
-        "id, campus_id, actor_id, actor_role, action, entity_type, entity_id, metadata, created_at, actor:actor_id(full_name, email)"
-      )
-      .order("created_at", { ascending: false })
-      .limit(400);
-    if (data) setAuditLogs(data);
+    const [auditRes, routesRes] = await Promise.all([
+      supabase
+        .from("audit_logs")
+        .select(
+          "id, campus_id, actor_id, actor_role, action, entity_type, entity_id, metadata, created_at, actor:actor_id(full_name, email)"
+        )
+        .order("created_at", { ascending: false })
+        .limit(400),
+      supabase
+        .from("document_routes")
+        .select(
+          "id, document_id, campus_id, from_office, to_office, action, remarks, acted_by, created_at, actor:acted_by(full_name, email, role), document:document_id(tracking_code, title, origin_campus_id)"
+        )
+        .order("created_at", { ascending: false })
+        .limit(300),
+    ]);
+    if (auditRes.data) setAuditLogs(auditRes.data);
+    if (routesRes.data) setDocumentRoutes(routesRes.data);
   }, []);
 
   const refreshSettings = useCallback(async () => {
@@ -262,11 +285,6 @@ export default function SuperadminPortalClient({
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "documents" },
-        () => refreshDocuments()
-      )
-      .on(
-        "postgres_changes",
         { event: "*", schema: "public", table: "announcements" },
         () => refreshAnnouncements()
       )
@@ -283,7 +301,6 @@ export default function SuperadminPortalClient({
   }, [
     profile.id,
     refreshAnnouncements,
-    refreshDocuments,
     refreshSettings,
     refreshUsers,
   ]);
@@ -301,150 +318,154 @@ export default function SuperadminPortalClient({
   }, [pendingRegistrations, regCampusFilter]);
 
   const campusOverview = useMemo(() => {
-    return campuses.map((c) => {
+    return campuses.map((c, idx) => {
       const campusUsers = users.filter((u) => u.campus_id === c.id);
-      const campusAdmin = campusUsers.find(
-        (u) => u.role === ROLES.CAMPUS_ADMIN && u.is_active
-      );
       const activeCount = campusUsers.filter(
         (u) => u.is_active && u.approval_status === "approved"
       ).length;
       const pendingCount = campusUsers.filter(
         (u) => u.approval_status === "pending" && u.profile_completed === true
       ).length;
-      const campusDocs = documents.filter(
-        (d) => d.current_campus_id === c.id || d.origin_campus_id === c.id
-      );
-      const overdueDocs = campusDocs.filter(isDocOverdue).length;
+      const inactiveCount = campusUsers.filter((u) => !u.is_active).length;
+      const announcementCount = announcements.filter(
+        (a) =>
+          a.is_active !== false && (a.campus_id === c.id || a.campus_id === null)
+      ).length;
+      const slugKey = String(c.slug ?? "").toLowerCase();
+      const accentColor =
+        CAMPUS_DONUT_COLORS[slugKey] ??
+        CAMPUS_DONUT_FALLBACK_COLORS[idx % CAMPUS_DONUT_FALLBACK_COLORS.length];
+      const displayName =
+        c.is_main && !String(c.name ?? "").toLowerCase().includes("main")
+          ? `CHMSU ${c.name} (Main)`
+          : `CHMSU ${c.name}`;
 
       return {
         campus: c,
-        adminTitle: getCampusAdminTitle(c.slug, c.name),
-        campusAdmin,
+        displayName,
+        accentColor,
+        totalUsers: campusUsers.length,
         activeCount,
         pendingCount,
-        docCount: campusDocs.length,
-        overdueDocs,
+        inactiveCount,
+        announcementCount,
       };
     });
-  }, [campuses, documents, users]);
+  }, [announcements, campuses, users]);
 
-  // Analytics & SLA calculations
-  const analyticsDocs = useMemo(() => {
-    if (analyticsCampusId === "all") return documents;
-    return documents.filter(
-      (d) =>
-        d.current_campus_id === analyticsCampusId ||
-        d.origin_campus_id === analyticsCampusId
-    );
-  }, [analyticsCampusId, documents]);
+  // System Health & User Dashboard calculations (filtered by selected campus)
+  const scopedDashboardUsers = useMemo(() => {
+    if (analyticsCampusId === "all") return users;
+    return users.filter((u) => u.campus_id === analyticsCampusId);
+  }, [analyticsCampusId, users]);
 
-  const analyticsKpis = useMemo(() => {
-    const total = analyticsDocs.length;
-    const active = analyticsDocs.filter(
-      (d) => d.status !== "completed" && d.status !== "archived"
+  const scopedDashboardAnnouncements = useMemo(() => {
+    const activeOnly = announcements.filter((a) => a.is_active !== false);
+    if (analyticsCampusId === "all") return activeOnly;
+    return activeOnly.filter(
+      (a) => a.campus_id === analyticsCampusId || a.campus_id === null
     );
-    const overdue = active.filter(isDocOverdue);
-    const interTransit = active.filter(
-      (d) => d.origin_campus_id !== d.current_campus_id
-    );
-    const onTimeCount = analyticsDocs.filter((d) => !isDocOverdue(d)).length;
-    const onTimeRate =
-      total === 0 ? 100 : Math.round((onTimeCount / total) * 1000) / 10;
+  }, [analyticsCampusId, announcements]);
 
-    const completed = analyticsDocs.filter((d) => d.completed_at);
-    const avgTurnaround =
-      completed.length === 0
-        ? 0
-        : Math.round(
-          (completed.reduce((acc, d) => {
-            const days =
-              (new Date(d.completed_at).getTime() -
-                new Date(d.created_at).getTime()) /
-              86400000;
-            return acc + Math.max(0, days);
-          }, 0) /
-            completed.length) *
-          10
-        ) / 10;
+  const systemKpis = useMemo(() => {
+    const totalUsers = scopedDashboardUsers.length;
+    const activeAccounts = scopedDashboardUsers.filter(
+      (u) => u.is_active && u.approval_status === "approved"
+    ).length;
+    const pendingCount = scopedDashboardUsers.filter(
+      (u) => u.approval_status === "pending" && u.profile_completed === true
+    ).length;
+    const inactiveAccounts = scopedDashboardUsers.filter(
+      (u) => !u.is_active
+    ).length;
+    const activeAnnouncements = scopedDashboardAnnouncements.length;
 
     return {
-      total,
-      activeCount: active.length,
-      overdueCount: overdue.length,
-      interTransitCount: interTransit.length,
-      onTimeRate,
-      avgTurnaround,
+      totalUsers,
+      activeAccounts,
+      pendingCount,
+      inactiveAccounts,
+      activeAnnouncements,
     };
-  }, [analyticsDocs]);
+  }, [scopedDashboardAnnouncements, scopedDashboardUsers]);
 
-  const analyticsByCampus = useMemo(() => {
-    return campuses.map((c) => {
-      const docs = analyticsDocs.filter((d) => d.current_campus_id === c.id);
-      const delayed = docs.filter(isDocOverdue).length;
-      const delayRate =
-        docs.length === 0 ? 0 : Math.round((delayed / docs.length) * 100);
-      return { campus: c, total: docs.length, delayed, delayRate };
-    });
-  }, [analyticsDocs, campuses]);
+  const campusDonutData = useMemo(() => {
+    const total = campusOverview.reduce((sum, row) => sum + row.totalUsers, 0);
+    const segments = [];
+    let cumulativeAngle = 0;
 
-  const maxCampusVolume = useMemo(
-    () => Math.max(1, ...analyticsByCampus.map((c) => c.total)),
-    [analyticsByCampus]
+    for (let idx = 0; idx < campusOverview.length; idx += 1) {
+      const row = campusOverview[idx];
+      const slugKey = String(row.campus.slug ?? "").toLowerCase();
+      const color =
+        CAMPUS_DONUT_COLORS[slugKey] ??
+        CAMPUS_DONUT_FALLBACK_COLORS[idx % CAMPUS_DONUT_FALLBACK_COLORS.length];
+      const label =
+        row.campus.is_main &&
+        !String(row.campus.name ?? "").toLowerCase().includes("main")
+          ? `${row.campus.name} (Main)`
+          : row.campus.name;
+      const pct = total > 0 ? Math.round((row.totalUsers / total) * 100) : 0;
+      const sweepAngle = total > 0 ? (row.totalUsers / total) * 360 : 0;
+      const startAngle = cumulativeAngle;
+      const endAngle = cumulativeAngle + sweepAngle;
+      cumulativeAngle = endAngle;
+
+      segments.push({
+        campusId: row.campus.id,
+        label,
+        color,
+        totalUsers: row.totalUsers,
+        activeCount: row.activeCount,
+        pendingCount: row.pendingCount,
+        pct,
+        startAngle,
+        endAngle,
+        sweepAngle,
+      });
+    }
+
+    const nonZeroCount = segments.filter((s) => s.totalUsers > 0).length;
+    return { total, segments, nonZeroCount };
+  }, [campusOverview]);
+
+  const activeDonutCampusId =
+    hoveredCampusId ?? (analyticsCampusId !== "all" ? analyticsCampusId : null);
+
+  const activeDonutSegment = useMemo(
+    () =>
+      activeDonutCampusId
+        ? campusDonutData.segments.find(
+            (seg) => seg.campusId === activeDonutCampusId
+          ) ?? null
+        : null,
+    [activeDonutCampusId, campusDonutData.segments]
   );
 
-  const bottleneckOffices = useMemo(() => {
-    const map = new Map();
-    analyticsDocs.forEach((doc) => {
-      const campusName = campusMap[doc.current_campus_id]?.name ?? "CHMSU";
-      const key = `${doc.current_office}__${doc.current_campus_id}`;
-      const existing = map.get(key) ?? {
-        office: doc.current_office,
-        campusName,
-        total: 0,
-        active: 0,
-        overdue: 0,
-      };
-      existing.total += 1;
-      if (doc.status !== "completed" && doc.status !== "archived") {
-        existing.active += 1;
-      }
-      if (isDocOverdue(doc)) existing.overdue += 1;
-      map.set(key, existing);
-    });
-    return Array.from(map.values())
-      .sort((a, b) => b.overdue - a.overdue || b.active - a.active)
-      .slice(0, 8);
-  }, [analyticsDocs, campusMap]);
-
-  // Document Alerts tab derived list
-  const totalOverdueCount = useMemo(
-    () => documents.filter(isDocOverdue).length,
-    [documents]
+  const visibleCampusOverview = useMemo(
+    () =>
+      analyticsCampusId === "all"
+        ? campusOverview
+        : campusOverview.filter((item) => item.campus.id === analyticsCampusId),
+    [analyticsCampusId, campusOverview]
   );
 
-  const filteredDocuments = useMemo(() => {
-    const q = docSearch.trim().toLowerCase();
-    return documents.filter((d) => {
-      if (
-        docCampusFilter !== "all" &&
-        d.current_campus_id !== docCampusFilter &&
-        d.origin_campus_id !== docCampusFilter
-      ) {
-        return false;
-      }
-      if (docOverdueOnly && !isDocOverdue(d)) return false;
-      if (!q) return true;
-      return (
-        d.tracking_code?.toLowerCase().includes(q) ||
-        d.title?.toLowerCase().includes(q) ||
-        d.current_office?.toLowerCase().includes(q) ||
-        d.document_type?.toLowerCase().includes(q)
-      );
-    });
-  }, [docCampusFilter, docOverdueOnly, docSearch, documents]);
+  const accountsByRole = useMemo(() => {
+    const roleSpecs = [
+      { role: ROLES.STUDENT, label: "Students" },
+      { role: ROLES.FACULTY, label: "Faculty" },
+      { role: ROLES.STAFF, label: "Staff" },
+      { role: ROLES.RMO, label: "Records Management Officers (RMO)" },
+      { role: ROLES.MANAGEMENT, label: "Institutional Management" },
+      { role: ROLES.CAMPUS_ADMIN, label: "Campus Admins" },
+    ];
+    return roleSpecs.map((spec) => ({
+      ...spec,
+      count: scopedDashboardUsers.filter((u) => u.role === spec.role).length,
+    }));
+  }, [scopedDashboardUsers]);
 
-  // Users & Roles derived list
+  // Platform Users derived list
   const filteredUsers = useMemo(() => {
     const q = userSearch.trim().toLowerCase();
     return users.filter((u) => {
@@ -452,6 +473,15 @@ export default function SuperadminPortalClient({
         return false;
       }
       if (userRoleFilter !== "all" && u.role !== userRoleFilter) return false;
+      if (
+        userStatusFilter === "active" &&
+        !(u.is_active && u.approval_status === "approved")
+      ) {
+        return false;
+      }
+      if (userStatusFilter === "inactive" && u.is_active) {
+        return false;
+      }
       if (!q) return true;
       return (
         u.full_name?.toLowerCase().includes(q) ||
@@ -460,7 +490,7 @@ export default function SuperadminPortalClient({
         u.department?.toLowerCase().includes(q)
       );
     });
-  }, [userCampusFilter, userRoleFilter, userSearch, users]);
+  }, [userCampusFilter, userRoleFilter, userSearch, userStatusFilter, users]);
 
   const filteredAnnouncements = useMemo(() => {
     if (announcementCampusFilter === "all") return announcements;
@@ -470,114 +500,150 @@ export default function SuperadminPortalClient({
     return announcements.filter((a) => a.campus_id === announcementCampusFilter);
   }, [announcementCampusFilter, announcements]);
 
+  const allSystemLogs = useMemo(
+    () => auditLogs.filter((log) => !isDocumentLog(log)),
+    [auditLogs]
+  );
+
+  const allDocumentLogs = useMemo(() => {
+    const docAuditEntries = auditLogs.filter((log) => isDocumentLog(log));
+    const normalizedRouteEntries = documentRoutes
+      .map((route) => ({
+        id: `route-${route.id}`,
+        _source: "document_route",
+        campus_id: route.campus_id || route.document?.origin_campus_id || null,
+        actor_id: route.acted_by,
+        actor_role: route.actor?.role ?? null,
+        action: `document.${route.action}`,
+        entity_type: "document_route",
+        entity_id: route.document_id,
+        created_at: route.created_at,
+        actor: route.actor ?? null,
+        metadata: {
+          tracking_code: route.document?.tracking_code ?? null,
+          title: route.document?.title ?? null,
+          from_office: route.from_office ?? null,
+          to_office: route.to_office ?? null,
+          remarks: route.remarks ?? null,
+        },
+      }))
+      .filter((routeEntry) => {
+        const routeTime = new Date(routeEntry.created_at).getTime();
+        const routeActionLabel = formatAuditActionLabel(routeEntry.action);
+        return !docAuditEntries.some((auditEntry) => {
+          if (auditEntry.entity_id !== routeEntry.entity_id) return false;
+          if (formatAuditActionLabel(auditEntry.action) !== routeActionLabel) {
+            return false;
+          }
+          const diffMs = Math.abs(
+            new Date(auditEntry.created_at).getTime() - routeTime
+          );
+          return diffMs <= 10000;
+        });
+      });
+
+    return [...docAuditEntries, ...normalizedRouteEntries].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [auditLogs, documentRoutes]);
+
+  const systemAuditCount = useMemo(
+    () =>
+      allSystemLogs.filter(
+        (log) =>
+          auditCampusFilter === "all" || log.campus_id === auditCampusFilter
+      ).length,
+    [allSystemLogs, auditCampusFilter]
+  );
+
+  const documentAuditCount = useMemo(
+    () =>
+      allDocumentLogs.filter(
+        (log) =>
+          auditCampusFilter === "all" || log.campus_id === auditCampusFilter
+      ).length,
+    [allDocumentLogs, auditCampusFilter]
+  );
+
   const filteredAuditLogs = useMemo(() => {
     const q = auditQuery.trim().toLowerCase();
-    return auditLogs.filter((log) => {
+    const sourceLogs =
+      auditSubTab === "document" ? allDocumentLogs : allSystemLogs;
+    return sourceLogs.filter((log) => {
       if (auditCampusFilter !== "all" && log.campus_id !== auditCampusFilter) {
         return false;
       }
       if (!q) return true;
+      const categoryLabel = getAuditLogCategory(log).label.toLowerCase();
+      const actionLabel = formatAuditActionLabel(log.action).toLowerCase();
+      const detailSummary = formatAuditDetailSummary(log, {
+        roleLabels: ROLE_LABELS,
+        campusMap,
+      }).toLowerCase();
+      const actorEmail = String(
+        log.actor?.email || log.metadata?.email || ""
+      ).toLowerCase();
+      const actorName = String(
+        log.actor?.full_name || log.metadata?.full_name || ""
+      ).toLowerCase();
+      const trackingCode = String(
+        log.metadata?.tracking_code || ""
+      ).toLowerCase();
+      const roleLabel = (
+        ROLE_LABELS[log.actor_role] ??
+        log.actor_role ??
+        ""
+      ).toLowerCase();
+      const campusLabel = (
+        campusMap[log.campus_id]?.name ?? "University-Wide"
+      ).toLowerCase();
       return (
         log.action?.toLowerCase().includes(q) ||
-        log.actor?.full_name?.toLowerCase().includes(q) ||
-        log.actor?.email?.toLowerCase().includes(q) ||
-        log.actor_role?.toLowerCase().includes(q) ||
-        JSON.stringify(log.metadata ?? {})
-          .toLowerCase()
-          .includes(q)
+        actionLabel.includes(q) ||
+        categoryLabel.includes(q) ||
+        detailSummary.includes(q) ||
+        trackingCode.includes(q) ||
+        roleLabel.includes(q) ||
+        campusLabel.includes(q) ||
+        actorName.includes(q) ||
+        actorEmail.includes(q) ||
+        log.actor_role?.toLowerCase().includes(q)
       );
     });
-  }, [auditCampusFilter, auditLogs, auditQuery]);
+  }, [
+    allDocumentLogs,
+    allSystemLogs,
+    auditCampusFilter,
+    auditQuery,
+    auditSubTab,
+    campusMap,
+  ]);
 
-  // SLA Check & Document Custody Inspector
-  async function handleRunSlaCheck() {
-    setRunningSla(true);
-    setFeedback(null);
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase.rpc("run_sla_delay_check");
-      if (error) {
-        setFeedback({ type: "error", message: error.message });
-        return;
-      }
-      await Promise.all([refreshDocuments(), refreshAuditLogs()]);
-      const flagged = data?.flagged_count ?? 0;
-      setFeedback({
-        type: flagged > 0 ? "warning" : "success",
-        message:
-          flagged > 0
-            ? `SLA Delay Check flagged ${flagged} newly overdue document${flagged === 1 ? "" : "s"}.`
-            : "SLA Delay Check completed — no newly overdue documents.",
-      });
-    } finally {
-      setRunningSla(false);
-    }
+  // Dashboard interactive navigation helpers
+  function toggleDashboardCampusFilter(campusId) {
+    setAnalyticsCampusId((prev) => (prev === campusId ? "all" : campusId));
   }
 
-  async function openInspectModal(doc) {
-    setInspectDoc(doc);
-    setLoadingRoutes(true);
-    try {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("document_routes")
-        .select(
-          "id, campus_id, from_office, to_office, action, remarks, scanned_via_qr, created_at"
-        )
-        .eq("document_id", doc.id)
-        .order("created_at", { ascending: true });
-      setInspectRoutes(data ?? []);
-    } finally {
-      setLoadingRoutes(false);
-    }
+  function openUsersFiltered({
+    campusId = "all",
+    role = "all",
+    status = "all",
+  } = {}) {
+    setUserSearch("");
+    setUserCampusFilter(campusId);
+    setUserRoleFilter(role);
+    setUserStatusFilter(status);
+    setActiveTab("users");
   }
 
-  async function handleSignedDownload(doc) {
-    if (!doc?.file_path) return;
-    setDownloadingFile(true);
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase.storage
-        .from(STORAGE_BUCKETS.DOCUMENT_FILES)
-        .createSignedUrl(doc.file_path, 300);
-      if (error || !data?.signedUrl) {
-        setFeedback({
-          type: "error",
-          message: error?.message || "Unable to generate download link.",
-        });
-        return;
-      }
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-    } finally {
-      setDownloadingFile(false);
-    }
+  function openRegistrationsFiltered(campusId = "all") {
+    setRegCampusFilter(campusId);
+    setActiveTab("registrations");
   }
 
-  function handleExportAnalyticsCsv() {
-    const today = new Date().toISOString().slice(0, 10);
-    const headers = [
-      "Tracking Code",
-      "Title",
-      "Type",
-      "Status",
-      "Origin Campus",
-      "Current Campus",
-      "Current Office",
-      "Overdue",
-      "Created At",
-    ];
-    const rows = analyticsDocs.map((d) => [
-      d.tracking_code,
-      d.title,
-      d.document_type,
-      d.status,
-      campusMap[d.origin_campus_id]?.name ?? "",
-      campusMap[d.current_campus_id]?.name ?? "",
-      d.current_office,
-      isDocOverdue(d) ? "YES" : "NO",
-      d.created_at,
-    ]);
-    downloadCsvFile(`chmsu-analytics-${today}.csv`, headers, rows);
+  function openAnnouncementsFiltered(campusId = "all") {
+    setAnnouncementCampusFilter(campusId);
+    setActiveTab("announcements");
   }
 
   // Deactivate / Reactivate User Account ONLY (never mutates role, campus, dept, office, or kiosk)
@@ -639,6 +705,14 @@ export default function SuperadminPortalClient({
     } finally {
       setTogglingUserStatus(false);
     }
+  }
+
+  function resetAnnouncementComposer() {
+    setAnnouncementForm(EMPTY_ANNOUNCEMENT);
+    setAnnouncementAttachmentFile(null);
+    setExistingAnnouncementAttachment(null);
+    setRemovedAnnouncementAttachmentPath(null);
+    setIsComposerOpen(false);
   }
 
   // Announcement CRUD
@@ -730,14 +804,12 @@ export default function SuperadminPortalClient({
         },
       });
 
-      setAnnouncementForm(EMPTY_ANNOUNCEMENT);
-      setAnnouncementAttachmentFile(null);
-      setExistingAnnouncementAttachment(null);
-      setRemovedAnnouncementAttachmentPath(null);
+      const wasEditing = Boolean(announcementForm.id);
+      resetAnnouncementComposer();
       await Promise.all([refreshAnnouncements(), refreshAuditLogs()]);
       setFeedback({
         type: "success",
-        message: announcementForm.id
+        message: wasEditing
           ? "Announcement updated."
           : "Announcement published.",
       });
@@ -830,6 +902,14 @@ export default function SuperadminPortalClient({
     setSigningOut(true);
     try {
       const supabase = createClient();
+      try {
+        await supabase.rpc("log_auth_activity", {
+          p_event: "sign_out",
+          p_portal: "superadmin",
+        });
+      } catch {
+        // Best-effort auth activity logging
+      }
       await supabase.auth.signOut();
       router.push("/sys-admin");
       router.refresh();
@@ -839,15 +919,8 @@ export default function SuperadminPortalClient({
   }
 
   const navTabs = [
-    { id: "overview", label: "Overview & Campus Admins", icon: Building2 },
-    { id: "analytics", label: "Analytics & SLA", icon: BarChart3 },
-    {
-      id: "documents",
-      label: "Document Alerts",
-      icon: ShieldAlert,
-      alertBadge: totalOverdueCount,
-    },
-    { id: "users", label: "Users & Roles", icon: Users },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "users", label: "Platform Users", icon: Users },
     {
       id: "registrations",
       label: "Pending Registrations",
@@ -861,7 +934,7 @@ export default function SuperadminPortalClient({
       icon: Wrench,
       alertDot: settings?.maintenance_mode,
     },
-    { id: "audit", label: "Audit Logs", icon: Activity },
+    { id: "audit", label: "Reports", icon: Activity },
   ];
 
   return (
@@ -905,7 +978,7 @@ export default function SuperadminPortalClient({
 
             <div className="flex items-center gap-3">
               {settings?.maintenance_mode && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-800">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-800">
                   <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
                   Maintenance Mode Active
                 </span>
@@ -916,7 +989,7 @@ export default function SuperadminPortalClient({
                   if (item.type === "system") setActiveTab("registrations");
                   else if (item.type === "announcement")
                     setActiveTab("announcements");
-                  else setActiveTab("documents");
+                  else setActiveTab("audit");
                 }}
               />
               <HeaderAccountMenu
@@ -960,117 +1033,28 @@ export default function SuperadminPortalClient({
             </div>
           )}
 
-          {/* TAB 1: OVERVIEW & CAMPUS ADMINS */}
-          {activeTab === "overview" && (
-            <div className="space-y-5">
-              <div>
-                <h1 className="text-2xl font-bold text-chmsu-forest">
-                  Overview &amp; Campus Admins
-                </h1>
-                <p className="text-sm text-slate-600">
-                  Monitor all 4 CHMSU campuses and their assigned Campus Admin
-                  accounts.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {campusOverview.map((item) => (
-                  <article
-                    key={item.campus.id}
-                    className="rounded-2xl border border-chmsu-border bg-white p-5"
-                  >
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-wider text-chmsu-green">
-                        CHMSU {item.campus.name}
-                      </p>
-                      <h2 className="mt-0.5 text-lg font-bold text-chmsu-forest">
-                        {item.adminTitle}
-                      </h2>
-                    </div>
-
-                    <div className="mt-4 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3.5 py-2.5 text-xs">
-                      {item.campusAdmin ? (
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <p className="font-bold text-slate-900">
-                              {item.campusAdmin.full_name}
-                            </p>
-                            <p className="text-slate-500">
-                              {item.campusAdmin.email}
-                            </p>
-                          </div>
-                          <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
-                            Assigned
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-2 text-amber-800">
-                          <span className="font-semibold">
-                            No active Campus Admin assigned yet
-                          </span>
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold">
-                            Unassigned
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mt-4 grid grid-cols-3 gap-2.5 text-center">
-                      <div className="rounded-xl border border-chmsu-border bg-white p-2.5">
-                        <p className="text-lg font-bold text-chmsu-forest tabular-nums">
-                          {item.activeCount}
-                        </p>
-                        <p className="text-[11px] font-medium text-slate-500">
-                          Active Users
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-chmsu-border bg-white p-2.5">
-                        <p className="text-lg font-bold text-amber-700 tabular-nums">
-                          {item.pendingCount}
-                        </p>
-                        <p className="text-[11px] font-medium text-slate-500">
-                          Pending IDs
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-chmsu-border bg-white p-2.5">
-                        <p
-                          className={`text-lg font-bold tabular-nums ${item.overdueDocs > 0
-                              ? "text-red-700"
-                              : "text-slate-800"
-                            }`}
-                        >
-                          {item.docCount}
-                        </p>
-                        <p className="text-[11px] font-medium text-slate-500">
-                          Documents ({item.overdueDocs} late)
-                        </p>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: ANALYTICS & SLA */}
-          {activeTab === "analytics" && (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* TAB 1: SYSTEM ADMIN DASHBOARD (System Health, Users & Campus Administration) */}
+          {activeTab === "dashboard" && (
+            <div className="space-y-6">
+              {/* Top Header Row */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-chmsu-forest">
-                    Analytics &amp; SLA Performance
+                    Dashboard
                   </h1>
                   <p className="text-sm text-slate-600">
-                    Cross-campus KPIs, turnaround metrics, and office bottleneck
-                    analysis.
+                    University-wide system health, user accounts, campus
+                    administration, and platform oversight across all 4 CHMSU
+                    campuses.
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <select
                     value={analyticsCampusId}
                     onChange={(e) => setAnalyticsCampusId(e.target.value)}
-                    className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                    aria-label="Filter dashboard by campus"
+                    className="rounded-xl border border-chmsu-border bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs transition hover:border-chmsu-green focus:border-chmsu-green focus:outline-none"
                   >
                     <option value="all">All 4 Campuses</option>
                     {campuses.map((c) => (
@@ -1079,275 +1063,448 @@ export default function SuperadminPortalClient({
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="button"
-                    onClick={handleExportAnalyticsCsv}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-chmsu-forest bg-white px-3.5 py-2 text-xs font-bold text-chmsu-forest hover:bg-chmsu-green/10"
-                  >
-                    <FileSpreadsheet className="h-4 w-4 text-chmsu-green" />
-                    Export CSV
-                  </button>
                 </div>
               </div>
 
-              {/* KPI Grid */}
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+              {/* Section 1: 5 Interactive System-Focused KPI Cards */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
                 {[
-                  { label: "Total Documents", value: analyticsKpis.total },
-                  { label: "Active Routing", value: analyticsKpis.activeCount },
                   {
-                    label: "Overdue Alerts",
-                    value: analyticsKpis.overdueCount,
-                    danger: analyticsKpis.overdueCount > 0,
+                    label: "Total Users",
+                    value: systemKpis.totalUsers,
+                    icon: Users,
+                    iconWrapClass: "bg-[#143D29]/10 text-[#143D29]",
+                    valueClass: "text-chmsu-forest",
+                    onClick: () =>
+                      openUsersFiltered({
+                        campusId: analyticsCampusId,
+                        role: "all",
+                        status: "all",
+                      }),
                   },
                   {
-                    label: "On-Time SLA",
-                    value: `${analyticsKpis.onTimeRate}%`,
+                    label: "Active Accounts",
+                    value: systemKpis.activeAccounts,
+                    icon: UserCheck,
+                    iconWrapClass: "bg-emerald-50 text-emerald-700",
+                    valueClass: "text-emerald-700",
+                    onClick: () =>
+                      openUsersFiltered({
+                        campusId: analyticsCampusId,
+                        role: "all",
+                        status: "active",
+                      }),
                   },
                   {
-                    label: "Avg Turnaround",
-                    value: formatSlaDays(analyticsKpis.avgTurnaround),
+                    label: "Pending Registrations",
+                    value: systemKpis.pendingCount,
+                    icon: Clock,
+                    iconWrapClass: "bg-amber-50 text-amber-700",
+                    valueClass:
+                      systemKpis.pendingCount > 0
+                        ? "text-amber-700"
+                        : "text-chmsu-forest",
+                    onClick: () => openRegistrationsFiltered(analyticsCampusId),
                   },
                   {
-                    label: "Inter-Campus",
-                    value: analyticsKpis.interTransitCount,
+                    label: "Inactive Accounts",
+                    value: systemKpis.inactiveAccounts,
+                    icon: UserX,
+                    iconWrapClass:
+                      systemKpis.inactiveAccounts > 0
+                        ? "bg-rose-50 text-rose-700"
+                        : "bg-slate-100 text-slate-600",
+                    valueClass:
+                      systemKpis.inactiveAccounts > 0
+                        ? "text-rose-700"
+                        : "text-slate-700",
+                    onClick: () =>
+                      openUsersFiltered({
+                        campusId: analyticsCampusId,
+                        role: "all",
+                        status: "inactive",
+                      }),
                   },
-                ].map((kpi) => (
-                  <div
-                    key={kpi.label}
-                    className="rounded-2xl border border-chmsu-border bg-white p-4"
-                  >
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      {kpi.label}
-                    </p>
-                    <p
-                      className={`mt-1 text-2xl font-bold tabular-nums ${kpi.danger ? "text-red-600" : "text-chmsu-forest"
-                        }`}
+                  {
+                    label: "Announcements",
+                    value: systemKpis.activeAnnouncements,
+                    icon: Megaphone,
+                    iconWrapClass: "bg-blue-50 text-blue-700",
+                    valueClass: "text-chmsu-forest",
+                    onClick: () => openAnnouncementsFiltered(analyticsCampusId),
+                  },
+                ].map((kpi) => {
+                  const Icon = kpi.icon;
+                  return (
+                    <button
+                      key={kpi.label}
+                      type="button"
+                      onClick={kpi.onClick}
+                      className="group flex cursor-pointer flex-col justify-between rounded-2xl border border-chmsu-border bg-white p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[#143D29]/30 hover:shadow-md"
                     >
-                      {kpi.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Campus Volume + Bottlenecks */}
-              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                <section className="rounded-2xl border border-chmsu-border bg-white p-5">
-                  <h2 className="text-base font-bold text-chmsu-forest">
-                    Campus Document Volume &amp; Delay Rate
-                  </h2>
-                  <div className="mt-4 space-y-3.5">
-                    {analyticsByCampus.map((row) => (
-                      <div key={row.campus.id} className="space-y-1">
-                        <div className="flex justify-between text-xs font-semibold">
-                          <span className="text-slate-800">
-                            CHMSU {row.campus.name}
-                          </span>
-                          <span className="tabular-nums text-slate-600">
-                            {row.total} docs ({row.delayed} late &bull;{" "}
-                            {row.delayRate}%)
-                          </span>
-                        </div>
-                        <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className="h-full rounded-full bg-chmsu-green"
-                            style={{
-                              width: `${Math.round(
-                                (row.total / maxCampusVolume) * 100
-                              )}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-chmsu-border bg-white p-5">
-                  <h2 className="text-base font-bold text-chmsu-forest">
-                    Top Bottleneck Offices
-                  </h2>
-                  {bottleneckOffices.length === 0 ? (
-                    <p className="mt-4 text-xs text-slate-500">
-                      No document routing data yet.
-                    </p>
-                  ) : (
-                    <div className="mt-3 divide-y divide-chmsu-border text-xs">
-                      {bottleneckOffices.map((b) => (
-                        <div
-                          key={`${b.office}-${b.campusName}`}
-                          className="flex items-center justify-between py-2.5"
+                      <div className="flex items-start justify-between gap-2">
+                        <span
+                          className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${kpi.iconWrapClass}`}
                         >
-                          <div>
-                            <p className="font-bold text-slate-900">
-                              {b.office}
-                            </p>
-                            <p className="text-slate-500">
-                              CHMSU {b.campusName}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2 tabular-nums">
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
-                              {b.active} active
-                            </span>
-                            {b.overdue > 0 && (
-                              <span className="rounded-full bg-red-100 px-2 py-0.5 font-bold text-red-800">
-                                {b.overdue} overdue
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <span className="text-[11px] font-semibold text-chmsu-forest opacity-0 transition-opacity group-hover:opacity-100">
+                          View &rarr;
+                        </span>
+                      </div>
+                      <div className="mt-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          {kpi.label}
+                        </p>
+                        <p
+                          className={`mt-1 text-2xl font-bold tabular-nums ${kpi.valueClass}`}
+                        >
+                          {kpi.value}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Section 2: 2-Column Analytics Row */}
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <section className="flex flex-col justify-between rounded-2xl border border-chmsu-border bg-white p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-base font-bold text-chmsu-forest">
+                      Campus User Distribution
+                    </h2>
+                    {analyticsCampusId !== "all" && (
+                      <button
+                        type="button"
+                        onClick={() => setAnalyticsCampusId("all")}
+                        className="cursor-pointer rounded-md border border-chmsu-border bg-chmsu-canvas px-2 py-0.5 text-[11px] font-semibold text-chmsu-forest transition hover:border-chmsu-green hover:bg-white"
+                      >
+                        Reset filter
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex flex-col items-center justify-center">
+                    <div className="relative h-[200px] w-[200px]">
+                      <svg
+                        viewBox="0 0 200 200"
+                        className="h-full w-full overflow-visible"
+                        role="img"
+                        aria-label="Campus User Distribution Donut Chart"
+                      >
+                        {campusDonutData.total === 0 ? (
+                          <circle
+                            cx="100"
+                            cy="100"
+                            r="72"
+                            fill="none"
+                            stroke="#E2E8F0"
+                            strokeWidth="28"
+                          />
+                        ) : campusDonutData.nonZeroCount === 1 ? (
+                          campusDonutData.segments
+                            .filter((seg) => seg.totalUsers > 0)
+                            .map((seg) => {
+                              const isHighlighted =
+                                !activeDonutCampusId ||
+                                activeDonutCampusId === seg.campusId;
+                              const isEmphasized =
+                                activeDonutCampusId === seg.campusId;
+                              return (
+                                <circle
+                                  key={seg.campusId}
+                                  cx="100"
+                                  cy="100"
+                                  r="72"
+                                  fill="none"
+                                  stroke={seg.color}
+                                  strokeWidth="28"
+                                  onClick={() =>
+                                    toggleDashboardCampusFilter(seg.campusId)
+                                  }
+                                  onMouseEnter={() =>
+                                    setHoveredCampusId(seg.campusId)
+                                  }
+                                  onMouseLeave={() => setHoveredCampusId(null)}
+                                  className="cursor-pointer transition-all duration-200"
+                                  style={{
+                                    opacity: isHighlighted ? 1 : 0.35,
+                                    transform: isEmphasized
+                                      ? "scale(1.03)"
+                                      : "scale(1)",
+                                    transformOrigin: "100px 100px",
+                                  }}
+                                />
+                              );
+                            })
+                        ) : (
+                          campusDonutData.segments
+                            .filter((seg) => seg.totalUsers > 0)
+                            .map((seg) => {
+                              const isHighlighted =
+                                !activeDonutCampusId ||
+                                activeDonutCampusId === seg.campusId;
+                              const isEmphasized =
+                                activeDonutCampusId === seg.campusId;
+                              return (
+                                <path
+                                  key={seg.campusId}
+                                  d={describeDonutArc(
+                                    100,
+                                    100,
+                                    86,
+                                    58,
+                                    seg.startAngle,
+                                    seg.endAngle
+                                  )}
+                                  fill={seg.color}
+                                  stroke="#ffffff"
+                                  strokeWidth="2.5"
+                                  strokeLinejoin="round"
+                                  onClick={() =>
+                                    toggleDashboardCampusFilter(seg.campusId)
+                                  }
+                                  onMouseEnter={() =>
+                                    setHoveredCampusId(seg.campusId)
+                                  }
+                                  onMouseLeave={() => setHoveredCampusId(null)}
+                                  className="cursor-pointer transition-all duration-200"
+                                  style={{
+                                    opacity: isHighlighted ? 1 : 0.35,
+                                    transform: isEmphasized
+                                      ? "scale(1.035)"
+                                      : "scale(1)",
+                                    transformOrigin: "100px 100px",
+                                  }}
+                                />
+                              );
+                            })
+                        )}
+                      </svg>
+
+                      {/* Centered Interactive Readout */}
+                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-5 text-center">
+                        <span className="text-3xl font-bold leading-none text-slate-900 tabular-nums">
+                          {campusDonutData.total === 0
+                            ? 0
+                            : activeDonutSegment
+                              ? `${activeDonutSegment.pct}%`
+                              : campusDonutData.total}
+                        </span>
+                        <span className="mt-1.5 text-xs font-medium leading-tight text-slate-500">
+                          {campusDonutData.total === 0
+                            ? "Campus Users"
+                            : activeDonutSegment
+                              ? `${activeDonutSegment.label} • ${activeDonutSegment.activeCount} active`
+                              : "Campus Users"}
+                        </span>
+                      </div>
                     </div>
-                  )}
+
+                    {/* Compact 2x2 Interactive Legend */}
+                    <div className="mt-5 grid w-full max-w-md grid-cols-2 gap-x-4 gap-y-2">
+                      {campusDonutData.segments.map((seg) => {
+                        const isSelected = analyticsCampusId === seg.campusId;
+                        const isDimmed =
+                          Boolean(activeDonutCampusId) &&
+                          activeDonutCampusId !== seg.campusId;
+                        return (
+                          <button
+                            key={seg.campusId}
+                            type="button"
+                            onClick={() =>
+                              toggleDashboardCampusFilter(seg.campusId)
+                            }
+                            onMouseEnter={() =>
+                              setHoveredCampusId(seg.campusId)
+                            }
+                            onMouseLeave={() => setHoveredCampusId(null)}
+                            onFocus={() => setHoveredCampusId(seg.campusId)}
+                            onBlur={() => setHoveredCampusId(null)}
+                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition ${
+                              isSelected
+                                ? "border-chmsu-forest/30 bg-chmsu-canvas font-semibold"
+                                : "border-transparent hover:bg-slate-50"
+                            } ${isDimmed ? "opacity-50" : "opacity-100"}`}
+                          >
+                            <span className="flex min-w-0 items-center gap-1.5">
+                              <span
+                                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ backgroundColor: seg.color }}
+                              />
+                              <span className="truncate font-medium text-slate-700">
+                                {seg.label}
+                              </span>
+                            </span>
+                            <span className="shrink-0 tabular-nums text-slate-500">
+                              {seg.totalUsers} ({seg.pct}%)
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
+
+                <section className="flex flex-col justify-between rounded-2xl border border-chmsu-border bg-white p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-base font-bold text-chmsu-forest">
+                      Accounts by Role
+                    </h2>
+                    <span className="text-[11px] font-medium text-slate-500">
+                      Click a role to filter users
+                    </span>
+                  </div>
+                  <div className="mt-3 space-y-1.5 text-xs">
+                    {accountsByRole.map((entry) => {
+                      const sharePct =
+                        scopedDashboardUsers.length > 0
+                          ? Math.round(
+                              (entry.count / scopedDashboardUsers.length) * 100
+                            )
+                          : 0;
+                      return (
+                        <button
+                          key={entry.role}
+                          type="button"
+                          onClick={() =>
+                            openUsersFiltered({
+                              campusId: analyticsCampusId,
+                              role: entry.role,
+                              status: "all",
+                            })
+                          }
+                          className="group w-full cursor-pointer rounded-lg px-2.5 py-2 text-left transition hover:bg-slate-50"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-800 group-hover:text-chmsu-forest">
+                              {entry.label}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] tabular-nums text-slate-400">
+                                {sharePct}%
+                              </span>
+                              <span className="rounded-md border border-chmsu-border bg-chmsu-canvas px-2.5 py-0.5 font-bold text-chmsu-forest tabular-nums group-hover:border-chmsu-green/40 group-hover:bg-white">
+                                {entry.count}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-md bg-slate-100">
+                            <div
+                              className="h-full rounded-md bg-chmsu-green transition-all duration-300"
+                              style={{ width: `${sharePct}%` }}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </section>
               </div>
-            </div>
-          )}
 
-          {/* TAB 3: DOCUMENT ALERTS */}
-          {activeTab === "documents" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h1 className="text-2xl font-bold text-chmsu-forest">
-                    Document Routing &amp; Red Delay Alerts
-                  </h1>
-                  <p className="text-sm text-slate-600">
-                    Monitor all-campus documents, flag SLA delays, and inspect
-                    full custody trails.
-                  </p>
-                </div>
+              {/* Section 3: Campus Overview (2x2 Grid) */}
+              <div className="space-y-3">
+                <h2 className="text-base font-bold text-chmsu-forest">
+                  Campus Overview
+                </h2>
 
-                <button
-                  type="button"
-                  disabled={runningSla}
-                  onClick={handleRunSlaCheck}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-flame px-3.5 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-60"
-                >
-                  {runningSla ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-3.5 w-3.5" />
-                  )}
-                  Run SLA Delay Check
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-4">
-                <div className="relative sm:col-span-2">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={docSearch}
-                    onChange={(e) => setDocSearch(e.target.value)}
-                    placeholder="Search tracking code, title, office..."
-                    className="w-full rounded-xl border border-chmsu-border bg-chmsu-canvas py-2 pl-9 pr-3 text-sm outline-none focus:border-chmsu-green focus:bg-white"
-                  />
-                </div>
-                <select
-                  value={docCampusFilter}
-                  onChange={(e) => setDocCampusFilter(e.target.value)}
-                  className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-                >
-                  <option value="all">All Campuses</option>
-                  {campuses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      CHMSU {c.name}
-                    </option>
-                  ))}
-                </select>
-                <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-chmsu-border bg-chmsu-canvas px-3 py-2 text-xs font-bold text-red-800">
-                  <input
-                    type="checkbox"
-                    checked={docOverdueOnly}
-                    onChange={(e) => setDocOverdueOnly(e.target.checked)}
-                    className="h-4 w-4 accent-red-600"
-                  />
-                  Overdue Only ({totalOverdueCount})
-                </label>
-              </div>
-
-              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
-                {filteredDocuments.length === 0 ? (
-                  <p className="p-8 text-center text-sm text-slate-500">
-                    No documents match your filters.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[780px] border-collapse text-left text-sm">
-                      <thead>
-                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-xs font-semibold uppercase tracking-wide text-slate-600">
-                          <th className="px-5 py-3">Tracking Code</th>
-                          <th className="px-4 py-3">Title &amp; Office</th>
-                          <th className="px-4 py-3">Campus</th>
-                          <th className="px-4 py-3">Status</th>
-                          <th className="px-5 py-3 text-left">Trail</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-chmsu-border">
-                        {filteredDocuments.slice(0, 100).map((d) => {
-                          const overdue = isDocOverdue(d);
-                          const statusMeta = DOCUMENT_STATUS_META[d.status] ?? {
-                            label: d.status,
-                            badgeClass:
-                              "bg-slate-100 text-slate-800 border-slate-200",
-                          };
-                          return (
-                            <tr
-                              key={d.id}
-                              className={overdue ? "bg-red-50/40" : ""}
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {visibleCampusOverview.map((item) => {
+                    const isSelectedCampus =
+                      analyticsCampusId === item.campus.id;
+                    return (
+                      <article
+                        key={item.campus.id}
+                        className="overflow-hidden rounded-2xl border border-chmsu-border bg-white transition-all hover:border-slate-300 hover:shadow-md"
+                      >
+                        <div
+                          className="h-1 w-full"
+                          style={{ backgroundColor: item.accentColor }}
+                        />
+                        <div className="p-5">
+                          <div className="flex items-center justify-between gap-3">
+                            <h3 className="text-lg font-bold text-chmsu-forest">
+                              {item.displayName}
+                            </h3>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleDashboardCampusFilter(item.campus.id)
+                              }
+                              className={`cursor-pointer rounded-md border px-2.5 py-1 text-[11px] font-semibold transition ${
+                                isSelectedCampus
+                                  ? "border-chmsu-forest bg-chmsu-forest text-white hover:bg-chmsu-green"
+                                  : "border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-green hover:bg-white hover:text-chmsu-forest"
+                              }`}
                             >
-                              <td className="px-5 py-3 font-mono text-xs font-bold text-chmsu-forest">
-                                {d.tracking_code}
-                              </td>
-                              <td className="px-4 py-3">
-                                <p className="font-semibold text-slate-900">
-                                  {d.title}
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                  {d.current_office} &bull; {d.document_type}
-                                </p>
-                              </td>
-                              <td className="px-4 py-3 text-xs text-slate-700">
-                                {campusMap[d.current_campus_id]?.name ?? "—"}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${overdue
-                                      ? "border-red-300 bg-red-100 text-red-900"
-                                      : statusMeta.badgeClass
-                                    }`}
-                                >
-                                  {overdue ? "Delayed" : statusMeta.label}
-                                </span>
-                              </td>
-                              <td className="px-5 py-3 text-left">
-                                <button
-                                  type="button"
-                                  onClick={() => openInspectModal(d)}
-                                  className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green"
-                                >
-                                  Inspect Trail
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                              {isSelectedCampus ? "Selected" : "Filter Campus"}
+                            </button>
+                          </div>
+
+                          <div className="mt-4 grid grid-cols-3 gap-2.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openUsersFiltered({
+                                  campusId: item.campus.id,
+                                  role: "all",
+                                  status: "active",
+                                })
+                              }
+                              className="cursor-pointer rounded-xl border border-chmsu-border bg-white p-2.5 transition hover:border-chmsu-green/50 hover:bg-chmsu-canvas"
+                            >
+                              <p className="text-lg font-bold text-chmsu-forest tabular-nums">
+                                {item.activeCount}
+                              </p>
+                              <p className="text-[11px] font-medium text-slate-500">
+                                Active Users
+                              </p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openRegistrationsFiltered(item.campus.id)
+                              }
+                              className="cursor-pointer rounded-xl border border-chmsu-border bg-white p-2.5 transition hover:border-amber-300 hover:bg-amber-50/50"
+                            >
+                              <p className="text-lg font-bold text-amber-700 tabular-nums">
+                                {item.pendingCount}
+                              </p>
+                              <p className="text-[11px] font-medium text-slate-500">
+                                Pending IDs
+                              </p>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openAnnouncementsFiltered(item.campus.id)
+                              }
+                              className="cursor-pointer rounded-xl border border-chmsu-border bg-white p-2.5 transition hover:border-blue-300 hover:bg-blue-50/40"
+                            >
+                              <p className="text-lg font-bold text-slate-800 tabular-nums">
+                                {item.announcementCount}
+                              </p>
+                              <p className="text-[11px] font-medium text-slate-500">
+                                Announcements
+                              </p>
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
 
-          {/* TAB 4: USERS & ROLES */}
+          {/* TAB 2: PLATFORM USERS */}
           {activeTab === "users" && (
             <div className="space-y-4">
               <div>
                 <h1 className="text-2xl font-bold text-chmsu-forest">
-                  Users &amp; Roles Management
+                  Platform Users
                 </h1>
                 <p className="text-sm text-slate-600">
                   View user details and manage account activation status across
@@ -1355,7 +1512,7 @@ export default function SuperadminPortalClient({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-4">
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
@@ -1389,6 +1546,15 @@ export default function SuperadminPortalClient({
                       {ROLE_LABELS[r] ?? r}
                     </option>
                   ))}
+                </select>
+                <select
+                  value={userStatusFilter}
+                  onChange={(e) => setUserStatusFilter(e.target.value)}
+                  className="rounded-xl border border-chmsu-border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="active">Active Accounts</option>
+                  <option value="inactive">Inactive Accounts</option>
                 </select>
               </div>
 
@@ -1429,8 +1595,8 @@ export default function SuperadminPortalClient({
                               {u.department ? ` • ${u.department}` : ""}
                             </p>
                           </td>
-                          <td className="px-4 py-3">
-                            <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
+                          <td className="px-4 py-3 text-left">
+                            <span className="text-xs font-semibold text-slate-700">
                               {ROLE_LABELS[u.role] ?? u.role}
                             </span>
                           </td>
@@ -1439,7 +1605,7 @@ export default function SuperadminPortalClient({
                           </td>
                           <td className="px-4 py-3">
                             <span
-                              className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${u.is_active
+                              className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${u.is_active
                                   ? "bg-emerald-100 text-emerald-800"
                                   : "bg-red-100 text-red-800"
                                 }`}
@@ -1546,7 +1712,7 @@ export default function SuperadminPortalClient({
                               {campusMap[u.campus_id]?.name ?? "Unassigned"}
                             </td>
                             <td className="px-4 py-3.5">
-                              <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+                              <span className="rounded-md bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
                                 {ROLE_LABELS[u.requested_role ?? "student"] ??
                                   "Student"}
                               </span>
@@ -1577,40 +1743,55 @@ export default function SuperadminPortalClient({
           {/* TAB 6: ANNOUNCEMENTS */}
           {activeTab === "announcements" && (
             <div className="space-y-5">
-              <div>
-                <h1 className="text-2xl font-bold text-chmsu-forest">
-                  University-Wide &amp; Campus Announcements
-                </h1>
-                <p className="text-sm text-slate-600">
-                  Publish, edit, pin, or delete announcements across all 4
-                  campuses.
-                </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-chmsu-forest">
+                    University-Wide &amp; Campus Announcements
+                  </h1>
+                  <p className="text-sm text-slate-600">
+                    Publish, edit, pin, or delete announcements across all 4
+                    campuses.
+                  </p>
+                </div>
+
+                {!isComposerOpen && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAnnouncementForm(EMPTY_ANNOUNCEMENT);
+                      setAnnouncementAttachmentFile(null);
+                      setExistingAnnouncementAttachment(null);
+                      setRemovedAnnouncementAttachmentPath(null);
+                      setIsComposerOpen(true);
+                    }}
+                    className="inline-flex shrink-0 cursor-pointer items-center gap-2 self-start rounded-lg bg-[#143D29] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0f2e1f] sm:self-auto"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New Announcement
+                  </button>
+                )}
               </div>
 
+              {isComposerOpen && (
               <form
                 onSubmit={handleSaveAnnouncement}
                 className="space-y-4 rounded-2xl border border-chmsu-border bg-white p-5"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-bold text-chmsu-forest">
                     {announcementForm.id
                       ? "Edit Announcement"
                       : "Publish New Announcement"}
                   </h2>
-                  {announcementForm.id && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAnnouncementForm(EMPTY_ANNOUNCEMENT);
-                        setAnnouncementAttachmentFile(null);
-                        setExistingAnnouncementAttachment(null);
-                        setRemovedAnnouncementAttachmentPath(null);
-                      }}
-                      className="text-xs font-semibold text-slate-500 hover:text-chmsu-forest"
-                    >
-                      Cancel Edit
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={resetAnnouncementComposer}
+                    aria-label="Close announcement composer"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-chmsu-border px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Cancel
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -1780,22 +1961,33 @@ export default function SuperadminPortalClient({
                     </label>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={savingAnnouncement}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-bold text-white transition hover:bg-chmsu-green disabled:opacity-60"
-                  >
-                    {savingAnnouncement ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Plus className="h-3.5 w-3.5" />
-                    )}
-                    {announcementForm.id
-                      ? "Save Announcement"
-                      : "Publish Announcement"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={resetAnnouncementComposer}
+                      disabled={savingAnnouncement}
+                      className="cursor-pointer rounded-lg border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingAnnouncement}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#143D29] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0f2e1f] disabled:opacity-60"
+                    >
+                      {savingAnnouncement ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Plus className="h-3.5 w-3.5" />
+                      )}
+                      {announcementForm.id
+                        ? "Save Announcement"
+                        : "Publish Announcement"}
+                    </button>
+                  </div>
                 </div>
               </form>
+              )}
 
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-sm font-bold text-slate-700">
@@ -1830,7 +2022,7 @@ export default function SuperadminPortalClient({
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="space-y-1">
                           <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-chmsu-forest/10 px-2.5 py-0.5 text-chmsu-forest">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-chmsu-forest/10 px-2.5 py-0.5 text-chmsu-forest">
                               {item.campus_id ? (
                                 <>
                                   <Building2 className="h-3 w-3" />
@@ -1843,11 +2035,11 @@ export default function SuperadminPortalClient({
                                 </>
                               )}
                             </span>
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 uppercase text-slate-600">
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 uppercase text-slate-600">
                               {item.category}
                             </span>
                             {item.is_pinned && (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-amber-900">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-amber-900">
                                 <Pin className="h-3 w-3" />
                                 Pinned
                               </span>
@@ -1906,6 +2098,10 @@ export default function SuperadminPortalClient({
                                   : null
                               );
                               setRemovedAnnouncementAttachmentPath(null);
+                              setIsComposerOpen(true);
+                              if (typeof window !== "undefined") {
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }
                             }}
                             className="rounded-lg border border-chmsu-border p-1.5 text-slate-600 hover:border-chmsu-green"
                           >
@@ -2070,17 +2266,63 @@ export default function SuperadminPortalClient({
             </div>
           )}
 
-          {/* TAB 8: GLOBAL AUDIT LOGS */}
+          {/* TAB 8: SYSTEM LOGS & DOCUMENT LOGS */}
           {activeTab === "audit" && (
             <div className="space-y-4">
               <div>
                 <h1 className="text-2xl font-bold text-chmsu-forest">
-                  Global Audit Logs
+                  {auditSubTab === "document" ? "Document Logs" : "System Logs"}
                 </h1>
                 <p className="text-sm text-slate-600">
-                  Immutable security and activity trail across all 4 CHMSU
-                  campuses.
+                  {auditSubTab === "document"
+                    ? "University-wide document tracking, custody handoffs, and SLA delay logs across all 4 CHMSU campuses."
+                    : "Immutable authentication, user management, registration, privacy, announcement, and system activity logs across all 4 CHMSU campuses."}
                 </p>
+              </div>
+
+              {/* System Logs / Document Logs Switcher */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAuditSubTab("system")}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                    auditSubTab === "system"
+                      ? "bg-chmsu-forest text-white shadow-xs"
+                      : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green hover:text-chmsu-forest"
+                  }`}
+                >
+                  <span>System Logs</span>
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                      auditSubTab === "system"
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {systemAuditCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAuditSubTab("document")}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                    auditSubTab === "document"
+                      ? "bg-chmsu-forest text-white shadow-xs"
+                      : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green hover:text-chmsu-forest"
+                  }`}
+                >
+                  <span>Document Logs</span>
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
+                      auditSubTab === "document"
+                        ? "bg-white/20 text-white"
+                        : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {documentAuditCount}
+                  </span>
+                </button>
               </div>
 
               <div className="grid grid-cols-1 gap-2.5 rounded-2xl border border-chmsu-border bg-white p-4 sm:grid-cols-3">
@@ -2090,7 +2332,11 @@ export default function SuperadminPortalClient({
                     type="search"
                     value={auditQuery}
                     onChange={(e) => setAuditQuery(e.target.value)}
-                    placeholder="Filter by action, actor, role, or metadata..."
+                    placeholder={
+                      auditSubTab === "document"
+                        ? "Search by name, email, tracking code, or action..."
+                        : "Search by name, email, category, or action..."
+                    }
                     className="w-full rounded-xl border border-chmsu-border bg-chmsu-canvas py-2 pl-9 pr-3 text-xs outline-none focus:border-chmsu-green focus:bg-white"
                   />
                 </div>
@@ -2108,67 +2354,84 @@ export default function SuperadminPortalClient({
                 </select>
               </div>
 
-              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white divide-y divide-chmsu-border">
+              <div className="overflow-hidden rounded-2xl border border-chmsu-border bg-white">
                 {filteredAuditLogs.length === 0 ? (
                   <p className="p-8 text-center text-sm text-slate-500">
-                    No audit log entries match your filter.
+                    {auditSubTab === "document"
+                      ? "No document log entries match your filter."
+                      : "No system log entries match your filter."}
                   </p>
                 ) : (
-                  filteredAuditLogs.slice(0, 100).map((log) => {
-                    const isExpanded = expandedAuditId === log.id;
-                    return (
-                      <div key={log.id} className="px-5 py-3 text-sm">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-xs font-bold text-chmsu-forest">
-                              {log.action}
-                            </span>
-                            {log.actor_role && (
-                              <span className="rounded-full bg-chmsu-navy/10 px-2 py-0.5 text-[11px] font-semibold text-chmsu-navy">
-                                {ROLE_LABELS[log.actor_role] ?? log.actor_role}
-                              </span>
-                            )}
-                            <span className="text-xs text-slate-600">
-                              {log.actor?.full_name ||
-                                log.actor?.email ||
-                                "System"}
-                            </span>
-                            <span className="text-xs text-slate-400">
-                              &bull;{" "}
-                              {campusMap[log.campus_id]?.name ??
-                                "University-Wide"}
-                            </span>
-                          </div>
+                  <div className="overflow-x-auto">
+                    <table
+                      className={`w-full border-collapse text-left text-sm ${
+                        auditSubTab === "document"
+                          ? "min-w-[680px]"
+                          : "min-w-[760px]"
+                      }`}
+                    >
+                      <thead>
+                        <tr className="border-b border-chmsu-border bg-chmsu-canvas text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
+                          <th className="px-5 py-3 text-left">Timestamp</th>
+                          <th className="px-4 py-3 text-left">Actor / User</th>
+                          {auditSubTab === "system" && (
+                            <th className="px-4 py-3 text-left">Log Category</th>
+                          )}
+                          <th className="px-5 py-3 text-left">Action Performed</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-chmsu-border">
+                        {filteredAuditLogs.slice(0, 100).map((log) => {
+                          const category = getAuditLogCategory(log);
+                          const actionLabel = formatAuditActionLabel(log.action);
+                          const detailSummary = formatAuditDetailSummary(log, {
+                            roleLabels: ROLE_LABELS,
+                            campusMap,
+                          });
+                          const actorName =
+                            log.actor?.full_name ||
+                            log.metadata?.full_name ||
+                            "System";
+                          const actorEmail =
+                            log.actor?.email || log.metadata?.email || "—";
 
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-500 tabular-nums">
-                              {formatDateTime(log.created_at)}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedAuditId(isExpanded ? null : log.id)
-                              }
-                              className="inline-flex items-center gap-1 rounded-lg border border-chmsu-border px-2 py-1 text-[11px] font-semibold text-slate-600"
+                          return (
+                            <tr
+                              key={log.id}
+                              className="transition hover:bg-slate-50/70"
                             >
-                              JSON
-                              {isExpanded ? (
-                                <ChevronUp className="h-3 w-3" />
-                              ) : (
-                                <ChevronDown className="h-3 w-3" />
+                              <td className="whitespace-nowrap px-5 py-3.5 text-left align-top text-xs text-slate-600 tabular-nums">
+                                {formatDateTime(log.created_at)}
+                              </td>
+                              <td className="px-4 py-3.5 text-left align-top">
+                                <p className="font-semibold text-slate-900">
+                                  {actorName}
+                                </p>
+                                <p className="mt-0.5 text-xs text-slate-500">
+                                  {actorEmail}
+                                </p>
+                              </td>
+                              {auditSubTab === "system" && (
+                                <td className="whitespace-nowrap px-4 py-3.5 text-left align-top text-sm font-medium text-slate-700">
+                                  {category.label}
+                                </td>
                               )}
-                            </button>
-                          </div>
-                        </div>
-
-                        {isExpanded && (
-                          <pre className="mt-2.5 overflow-x-auto rounded-xl bg-slate-950 p-3 font-mono text-xs text-emerald-300">
-                            {JSON.stringify(log.metadata ?? {}, null, 2)}
-                          </pre>
-                        )}
-                      </div>
-                    );
-                  })
+                              <td className="px-5 py-3.5 text-left align-top">
+                                <p className="font-semibold text-chmsu-forest">
+                                  {actionLabel}
+                                </p>
+                                {detailSummary && (
+                                  <p className="mt-0.5 text-xs text-slate-500">
+                                    {detailSummary}
+                                  </p>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
@@ -2179,278 +2442,24 @@ export default function SuperadminPortalClient({
         </main>
       </div>
 
-      {/* Custody Trail Drawer */}
-      {inspectDoc && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex justify-end bg-slate-900/50 backdrop-blur-xs"
-        >
-          <div className="flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
-            <div className="flex items-center justify-between bg-chmsu-forest px-5 py-4 text-white">
-              <div>
-                <p className="font-mono text-xs font-bold text-chmsu-gold">
-                  {inspectDoc.tracking_code}
-                </p>
-                <h3 className="text-base font-bold">{inspectDoc.title}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setInspectDoc(null)}
-                className="rounded-lg p-1.5 text-white/80 hover:bg-white/10"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
-              {inspectDoc.file_path && (
-                <div className="flex items-center justify-between rounded-xl border border-chmsu-border bg-chmsu-canvas p-3">
-                  <span className="truncate text-xs font-semibold text-slate-800">
-                    {inspectDoc.file_name}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={downloadingFile}
-                    onClick={() => handleSignedDownload(inspectDoc)}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-chmsu-navy px-3 py-1.5 text-xs font-semibold text-white"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Download
-                  </button>
-                </div>
-              )}
-
-              <h4 className="text-sm font-bold text-chmsu-forest">
-                Custody Timeline
-              </h4>
-              {loadingRoutes ? (
-                <p className="flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading custody trail...
-                </p>
-              ) : (
-                <ol className="space-y-4 border-l-2 border-chmsu-border pl-4">
-                  {inspectRoutes.map((step) => (
-                    <li key={step.id} className="relative text-sm">
-                      <span className="absolute -left-[23px] top-1.5 h-3 w-3 rounded-full border-2 border-white bg-chmsu-forest" />
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-slate-900">
-                          {ROUTE_ACTION_LABELS[step.action] ?? step.action}
-                        </span>
-                        <span className="text-[11px] text-slate-500 tabular-nums">
-                          {formatDateTime(step.created_at)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-700">
-                        {step.from_office ? `${step.from_office} → ` : ""}
-                        <span className="font-semibold text-chmsu-navy">
-                          {step.to_office}
-                        </span>{" "}
-                        ({campusMap[step.campus_id]?.name ?? "CHMSU"})
-                      </p>
-                      {step.remarks && (
-                        <p className="mt-1 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
-                          {step.remarks}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Read-Only User Details Modal (Deactivate / Reactivate Only) */}
+      {/* Read-Only User Details Modal (Profile Picture, School ID Photos & Activation Toggle) */}
       {selectedUser && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="User Details"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs"
-        >
-          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-chmsu-border bg-white shadow-xl">
-            <div className="flex items-center justify-between bg-chmsu-forest px-5 py-4 text-white">
-              <div>
-                <h3 className="text-base font-bold">User Details</h3>
-                <p className="text-xs text-chmsu-gold">
-                  {selectedUser.full_name}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedUser(null)}
-                aria-label="Close user details"
-                className="rounded-lg p-1 text-white/80 hover:bg-white/10"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="space-y-4 p-5">
-              <div className="divide-y divide-chmsu-border rounded-xl border border-chmsu-border bg-chmsu-canvas text-sm">
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    Full Name
-                  </span>
-                  <span className="text-right font-semibold text-slate-900">
-                    {selectedUser.full_name}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    Email
-                  </span>
-                  <span className="truncate text-right text-xs font-medium text-slate-800">
-                    {selectedUser.email}
-                  </span>
-                </div>
-
-                {selectedUser.employee_or_student_id && (
-                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs font-semibold text-slate-500">
-                      School ID
-                    </span>
-                    <span className="rounded border border-chmsu-border bg-white px-2 py-0.5 font-mono text-xs font-bold tracking-widest text-chmsu-forest">
-                      {selectedUser.employee_or_student_id}
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    Role
-                  </span>
-                  <span className="rounded-full bg-chmsu-navy/10 px-2.5 py-0.5 text-xs font-semibold text-chmsu-navy">
-                    {ROLE_LABELS[selectedUser.role] ?? selectedUser.role}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    Assigned Campus
-                  </span>
-                  <span className="text-right text-xs font-semibold text-slate-800">
-                    {campusMap[selectedUser.campus_id]?.name
-                      ? `CHMSU ${campusMap[selectedUser.campus_id].name}`
-                      : "Unassigned"}
-                  </span>
-                </div>
-
-                {(selectedUser.role !== ROLES.RMO ||
-                  selectedUser.department) && (
-                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Department
-                    </span>
-                    <span className="text-right text-xs font-medium text-slate-800">
-                      {selectedUser.department || "—"}
-                    </span>
-                  </div>
-                )}
-
-                {selectedUser.role === ROLES.STUDENT ||
-                  selectedUser.program_or_course ? (
-                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Program
-                    </span>
-                    <span className="text-right text-xs font-medium text-slate-800">
-                      {selectedUser.program_or_course || "—"}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Office
-                    </span>
-                    <span className="text-right text-xs font-medium text-slate-800">
-                      {selectedUser.office_location || "—"}
-                    </span>
-                  </div>
-                )}
-
-                {selectedUser.role !== ROLES.STUDENT && (
-                  <>
-                    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <span className="text-xs font-semibold text-slate-500">
-                        Job Title
-                      </span>
-                      <span className="text-right text-xs font-medium text-slate-800">
-                        {selectedUser.job_title || "—"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                      <span className="text-xs font-semibold text-slate-500">
-                        Teaches Classes
-                      </span>
-                      <span className="text-right text-xs font-semibold text-slate-800">
-                        {selectedUser.is_teaching ? "Yes" : "No"}
-                      </span>
-                    </div>
-                  </>
-                )}
-
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    Account Status
-                  </span>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${selectedUser.is_active
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-red-100 text-red-800"
-                      }`}
-                  >
-                    {selectedUser.is_active ? "Active" : "Deactivated"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedUser(null)}
-                  className="rounded-xl border border-chmsu-border px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Close
-                </button>
-
-                {selectedUser.id === profile.id ? (
-                  <p className="text-xs font-medium text-amber-700">
-                    You cannot deactivate your own account.
-                  </p>
-                ) : selectedUser.is_active ? (
-                  <button
-                    type="button"
-                    disabled={togglingUserStatus}
-                    onClick={handleToggleUserActive}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
-                  >
-                    {togglingUserStatus && (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    )}
-                    Deactivate Account
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={togglingUserStatus}
-                    onClick={handleToggleUserActive}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-chmsu-forest px-4 py-2 text-xs font-bold text-white transition hover:bg-chmsu-green disabled:opacity-60"
-                  >
-                    {togglingUserStatus && (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    )}
-                    Reactivate Account
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <UserDetailsModal
+          user={selectedUser}
+          campusLabel={
+            campusMap[selectedUser.campus_id]?.name
+              ? `CHMSU ${campusMap[selectedUser.campus_id].name}`
+              : "Unassigned"
+          }
+          cannotDeactivateReason={
+            selectedUser.id === profile.id
+              ? "You cannot deactivate your own account."
+              : ""
+          }
+          togglingStatus={togglingUserStatus}
+          onToggleActive={handleToggleUserActive}
+          onClose={() => setSelectedUser(null)}
+        />
       )}
 
       {/* Shared View ID & Details Review Modal */}

@@ -109,5 +109,16 @@ export async function GET(request) {
 
   const campusSlug = profile.campuses?.slug ?? "talisay";
   const destination = getDefaultRouteForRole(profile.role, campusSlug);
+
+  // Log Google OAuth sign-in for approved active users (skips recovery callbacks)
+  try {
+    await supabase.rpc("log_auth_activity", {
+      p_event: "sign_in",
+      p_portal: `${profile.role}_google`,
+    });
+  } catch {
+    // Best-effort auth activity logging
+  }
+
   return NextResponse.redirect(new URL(destination, request.url));
 }

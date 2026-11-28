@@ -498,12 +498,12 @@ export default function UserProfileView({
                   {profile.email}
                 </p>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[#FACC15] px-2.5 py-0.5 text-[11px] font-bold text-[#143D29]">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-[#FACC15] px-2.5 py-0.5 text-[11px] font-bold text-[#143D29]">
                     <ShieldCheck className="h-3 w-3" />
                     {roleLabel}
                   </span>
                   <span
-                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-0.5 text-[11px] font-semibold ${
                       profile.is_active
                         ? "bg-emerald-400/20 text-emerald-100 ring-1 ring-emerald-300/40"
                         : "bg-red-500/20 text-red-100 ring-1 ring-red-300/40"
@@ -517,7 +517,7 @@ export default function UserProfileView({
                       type="button"
                       onClick={handleRemoveAvatar}
                       disabled={avatarBusy}
-                      className="inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <Trash2 className="h-3 w-3" />
                       Remove photo
