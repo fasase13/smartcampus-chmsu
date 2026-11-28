@@ -244,7 +244,9 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
               {profile?.department && (
                 <div className="flex items-center justify-between gap-3 px-4 py-3">
                   <span className="text-xs font-semibold text-slate-500">
-                    College / Dept
+                    {(profile?.requested_role ?? profile?.role) === "student"
+                      ? "College / Department"
+                      : "Office Category"}
                   </span>
                   <span className="text-right font-medium text-slate-800">
                     {profile.department}
@@ -273,18 +275,6 @@ export default function PendingApprovalClient({ initialProfile, userId }) {
                   </span>
                 </div>
               )}
-
-              {profile?.job_title &&
-                (profile?.requested_role ?? profile?.role) !== "student" && (
-                  <div className="flex items-center justify-between gap-3 px-4 py-3">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Job Title
-                    </span>
-                    <span className="text-right font-medium text-slate-800">
-                      {profile.job_title}
-                    </span>
-                  </div>
-                )}
             </div>
 
             {statusMessage && (

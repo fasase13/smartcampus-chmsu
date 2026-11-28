@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import {
   AlertCircle,
   AlertTriangle,
-  Briefcase,
   Building2,
   CheckCircle2,
   CreditCard,
@@ -28,10 +27,10 @@ import {
   STORAGE_BUCKETS,
 } from "@/lib/constants";
 import {
-  JOB_TITLES_BY_ROLE,
-  getDepartmentsForCampusAndRole,
-  getRmoOfficesForCampus,
-  getSubOptionsForSelection,
+  getCollegesForCampus,
+  getOfficeCategoriesForCampus,
+  getOfficesForCategory,
+  getProgramsForCollege,
 } from "@/lib/chmsuDirectory";
 import PrivacyNoticeModal from "@/components/PrivacyNoticeModal";
 
@@ -44,8 +43,6 @@ const FIELD_LABELS = {
   full_name: "Full Name",
   department: "College / Department",
   program_or_office: "Program / Office",
-  job_title: "Job Title",
-  is_teaching: "Teaches Classes",
   id_photos: "School ID Photos",
 };
 
@@ -137,19 +134,6 @@ export default function CompleteRegistrationForm({
       ? profile?.office_location ?? ""
       : ""
   );
-  const [jobTitle, setJobTitle] = useState(
-    isReturned && !isFlagged("job_title") ? profile?.job_title ?? "" : ""
-  );
-  const [isTeaching, setIsTeaching] = useState(
-    isReturned &&
-      !isFlagged("is_teaching") &&
-      profile?.requested_role !== "student" &&
-      typeof profile?.is_teaching === "boolean"
-      ? profile.is_teaching
-        ? "yes"
-        : "no"
-      : ""
-  );
 
   // Existing valid photo paths retained if id_photos was NOT flagged
   const canReuseExistingPhotos =
@@ -175,22 +159,17 @@ export default function CompleteRegistrationForm({
   const selectedCampusSlug =
     campuses.find((c) => c.id === campusId)?.slug ?? "";
   const isStudentRole = requestedRole === "student";
-  const isRmoRole = requestedRole === "rmo";
   const departmentOptions =
-    selectedCampusSlug && requestedRole && !isRmoRole
-      ? getDepartmentsForCampusAndRole(selectedCampusSlug, requestedRole)
-      : [];
-  const rmoOfficeOptions =
-    selectedCampusSlug && isRmoRole
-      ? getRmoOfficesForCampus(selectedCampusSlug)
+    selectedCampusSlug && requestedRole
+      ? isStudentRole
+        ? getCollegesForCampus(selectedCampusSlug)
+        : getOfficeCategoriesForCampus(selectedCampusSlug)
       : [];
   const subOptions =
-    selectedCampusSlug && requestedRole && !isRmoRole && department
-      ? getSubOptionsForSelection(selectedCampusSlug, requestedRole, department)
-      : [];
-  const jobTitleOptions =
-    requestedRole && !isStudentRole
-      ? JOB_TITLES_BY_ROLE[requestedRole] ?? []
+    selectedCampusSlug && requestedRole && department
+      ? isStudentRole
+        ? getProgramsForCollege(selectedCampusSlug, department)
+        : getOfficesForCategory(selectedCampusSlug, department)
       : [];
 
   // Inline duplicate-invalid-value checks against returned_snapshot
@@ -221,8 +200,7 @@ export default function CompleteRegistrationForm({
       requestedRole === snapshot.requested_role
   );
   const isDeptDuplicate = Boolean(
-    !isRmoRole &&
-      isFlagged("department") &&
+    isFlagged("department") &&
       snapshot?.department &&
       department &&
       department.trim().toLowerCase() ===
@@ -238,20 +216,6 @@ export default function CompleteRegistrationForm({
           snapshot?.office_location &&
           officeLocation.trim().toLowerCase() ===
             String(snapshot.office_location).trim().toLowerCase()))
-  );
-  const isJobTitleDuplicate = Boolean(
-    isFlagged("job_title") &&
-      !isStudentRole &&
-      snapshot?.job_title &&
-      jobTitle.trim().toLowerCase() ===
-        String(snapshot.job_title).trim().toLowerCase()
-  );
-  const isTeachingDuplicate = Boolean(
-    isFlagged("is_teaching") &&
-      !isStudentRole &&
-      typeof snapshot?.is_teaching === "boolean" &&
-      isTeaching !== "" &&
-      (isTeaching === "yes") === snapshot.is_teaching
   );
 
   useEffect(() => {
@@ -323,7 +287,6 @@ export default function CompleteRegistrationForm({
     const cleanDept = department.trim();
     const cleanProgram = programOrCourse.trim();
     const cleanOffice = officeLocation.trim();
-    const cleanJobTitle = jobTitle.trim();
 
     if (
       isCampusDuplicate ||
@@ -331,9 +294,7 @@ export default function CompleteRegistrationForm({
       isNameDuplicate ||
       isRoleDuplicate ||
       isDeptDuplicate ||
-      isSubDuplicate ||
-      isJobTitleDuplicate ||
-      isTeachingDuplicate
+      isSubDuplicate
     ) {
       setErrorMessage(
         "One or more flagged fields still contain the previous invalid value. Please correct all highlighted fields before resubmitting."
@@ -357,8 +318,12 @@ export default function CompleteRegistrationForm({
       setErrorMessage("Please select a valid role.");
       return;
     }
-    if (!isRmoRole && !cleanDept) {
-      setErrorMessage("Please select your College / Department.");
+    if (!cleanDept) {
+      setErrorMessage(
+        isStudentRole
+          ? "Please select your College / Department."
+          : "Please select your Office Category."
+      );
       return;
     }
     if (isStudentRole && !cleanProgram) {
@@ -367,19 +332,6 @@ export default function CompleteRegistrationForm({
     }
     if (!isStudentRole && !cleanOffice) {
       setErrorMessage("Please select your Office.");
-      return;
-    }
-    if (
-      !isStudentRole &&
-      (!cleanJobTitle || !jobTitleOptions.includes(cleanJobTitle))
-    ) {
-      setErrorMessage("Please select a valid Job Title for your role.");
-      return;
-    }
-    if (!isStudentRole && isTeaching !== "yes" && isTeaching !== "no") {
-      setErrorMessage(
-        "Please answer whether you have a class to teach (Yes or No)."
-      );
       return;
     }
 
@@ -472,13 +424,13 @@ export default function CompleteRegistrationForm({
           p_id_number: cleanId,
           p_full_name: cleanName,
           p_requested_role: requestedRole,
-          p_department: isRmoRole ? null : cleanDept,
+          p_department: cleanDept,
           p_front_path: finalFrontPath,
           p_back_path: finalBackPath,
           p_program_or_course: isStudentRole ? cleanProgram : null,
           p_office_location: isStudentRole ? null : cleanOffice,
-          p_job_title: isStudentRole ? null : cleanJobTitle,
-          p_is_teaching: isStudentRole ? false : isTeaching === "yes",
+          p_job_title: null,
+          p_is_teaching: requestedRole === "faculty",
         }
       );
 
@@ -617,14 +569,26 @@ export default function CompleteRegistrationForm({
                     <span className="text-[11px] font-bold uppercase tracking-wide text-amber-800">
                       Fields to fix:
                     </span>
-                    {flaggedFields.map((key) => (
-                      <span
-                        key={key}
-                        className="rounded-md bg-amber-200 px-2.5 py-0.5 text-[11px] font-bold text-amber-950"
-                      >
-                        {FIELD_LABELS[key] ?? key}
-                      </span>
-                    ))}
+                    {flaggedFields.map((key) => {
+                      const label =
+                        key === "department"
+                          ? isStudentRole
+                            ? "College / Department"
+                            : "Office Category"
+                          : key === "program_or_office"
+                            ? isStudentRole
+                              ? "Program"
+                              : "Office"
+                            : FIELD_LABELS[key] ?? key;
+                      return (
+                        <span
+                          key={key}
+                          className="rounded-md bg-amber-200 px-2.5 py-0.5 text-[11px] font-bold text-amber-950"
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -676,7 +640,6 @@ export default function CompleteRegistrationForm({
                       setDepartment("");
                       setProgramOrCourse("");
                       setOfficeLocation("");
-                      setJobTitle("");
                     }}
                     className={`w-full rounded-xl border py-2.5 pl-10 pr-3 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
                       isFlagged("campus_id"),
@@ -792,10 +755,6 @@ export default function CompleteRegistrationForm({
                     setDepartment("");
                     setProgramOrCourse("");
                     setOfficeLocation("");
-                    setJobTitle("");
-                    if (nextRole === "student") {
-                      setIsTeaching("");
-                    }
                   }}
                   className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
                     isFlagged("requested_role"),
@@ -816,89 +775,55 @@ export default function CompleteRegistrationForm({
                 )}
               </div>
 
-              {isRmoRole ? (
-                <div>
-                  <label
-                    htmlFor="office-location"
-                    className="block text-sm font-semibold text-slate-700"
-                  >
-                    Office <span className="text-red-600">*</span>
-                    {isFlagged("program_or_office") && (
-                      <span className="ml-1.5 text-[11px] font-bold text-amber-700">
-                        (Needs correction)
-                      </span>
-                    )}
-                  </label>
-                  <select
-                    id="office-location"
-                    required
-                    disabled={!campusId}
-                    value={officeLocation}
-                    onChange={(e) => setOfficeLocation(e.target.value)}
-                    className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:bg-slate-100 ${fieldRing(
-                      isFlagged("program_or_office"),
-                      isSubDuplicate
-                    )}`}
-                  >
-                    <option value="">Select your Office...</option>
-                    {rmoOfficeOptions.map((officeOption) => (
-                      <option key={officeOption} value={officeOption}>
-                        {officeOption}
-                      </option>
-                    ))}
-                  </select>
-                  {isSubDuplicate && (
-                    <p className="mt-1 text-xs font-semibold text-red-700">
-                      {invalidDuplicateMsg}
-                    </p>
+              <div>
+                <label
+                  htmlFor="department"
+                  className="block text-sm font-semibold text-slate-700"
+                >
+                  {isStudentRole ? "College / Department" : "Office Category"}{" "}
+                  <span className="text-red-600">*</span>
+                  {isFlagged("department") && (
+                    <span className="ml-1.5 text-[11px] font-bold text-amber-700">
+                      (Needs correction)
+                    </span>
                   )}
-                </div>
-              ) : (
-                <div>
-                  <label
-                    htmlFor="department"
-                    className="block text-sm font-semibold text-slate-700"
-                  >
-                    {isStudentRole ? "College" : "College / Department"}{" "}
-                    <span className="text-red-600">*</span>
-                  </label>
-                  <select
-                    id="department"
-                    required
-                    disabled={!campusId || !requestedRole}
-                    value={department}
-                    onChange={(e) => {
-                      setDepartment(e.target.value);
-                      setProgramOrCourse("");
-                      setOfficeLocation("");
-                    }}
-                    className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:bg-slate-100 ${fieldRing(
-                      isFlagged("department"),
-                      isDeptDuplicate
-                    )}`}
-                  >
-                    <option value="">
-                      {isStudentRole
-                        ? "Select your College..."
-                        : "Select your College / Department..."}
+                </label>
+                <select
+                  id="department"
+                  required
+                  disabled={!campusId || !requestedRole}
+                  value={department}
+                  onChange={(e) => {
+                    setDepartment(e.target.value);
+                    setProgramOrCourse("");
+                    setOfficeLocation("");
+                  }}
+                  className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:bg-slate-100 ${fieldRing(
+                    isFlagged("department"),
+                    isDeptDuplicate
+                  )}`}
+                >
+                  <option value="">
+                    {isStudentRole
+                      ? "Select your College / Department..."
+                      : "Select your Office Category..."}
+                  </option>
+                  {departmentOptions.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
                     </option>
-                    {departmentOptions.map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                  {isDeptDuplicate && (
-                    <p className="mt-1 text-xs font-semibold text-red-700">
-                      {invalidDuplicateMsg}
-                    </p>
-                  )}
-                </div>
-              )}
+                  ))}
+                </select>
+                {isDeptDuplicate && (
+                  <p className="mt-1 text-xs font-semibold text-red-700">
+                    {invalidDuplicateMsg}
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Cascading Program (Students) or Office (Faculty / Staff) */}
-            {!isRmoRole && department && (
+            {/* Cascading Program (Students) or Office (Faculty / Staff / RMO) */}
+            {requestedRole && (
               <div>
                 <label
                   htmlFor={
@@ -908,10 +833,16 @@ export default function CompleteRegistrationForm({
                 >
                   {isStudentRole ? "Program" : "Office"}{" "}
                   <span className="text-red-600">*</span>
+                  {isFlagged("program_or_office") && (
+                    <span className="ml-1.5 text-[11px] font-bold text-amber-700">
+                      (Needs correction)
+                    </span>
+                  )}
                 </label>
                 <select
                   id={isStudentRole ? "program-or-course" : "office-location"}
                   required
+                  disabled={!department}
                   value={isStudentRole ? programOrCourse : officeLocation}
                   onChange={(e) => {
                     if (isStudentRole) {
@@ -920,15 +851,19 @@ export default function CompleteRegistrationForm({
                       setOfficeLocation(e.target.value);
                     }
                   }}
-                  className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
+                  className={`mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:ring-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 ${fieldRing(
                     isFlagged("program_or_office"),
                     isSubDuplicate
                   )}`}
                 >
                   <option value="">
-                    {isStudentRole
-                      ? "Select your degree Program..."
-                      : "Select your Office..."}
+                    {!department
+                      ? isStudentRole
+                        ? "Select a College / Department first..."
+                        : "Select an Office Category first..."
+                      : isStudentRole
+                        ? "Select your degree Program..."
+                        : "Select your Office..."}
                   </option>
                   {subOptions.map((option) => (
                     <option key={option} value={option}>
@@ -939,112 +874,6 @@ export default function CompleteRegistrationForm({
                 {isSubDuplicate && (
                   <p className="mt-1 text-xs font-semibold text-red-700">
                     {invalidDuplicateMsg}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Required Role-Connected Job Title Dropdown (Non-Student Roles Only) */}
-            {requestedRole && !isStudentRole && (
-              <div>
-                <label
-                  htmlFor="job-title"
-                  className="block text-sm font-semibold text-slate-700"
-                >
-                  Job Title <span className="text-red-600">*</span>
-                  {isFlagged("job_title") && (
-                    <span className="ml-1.5 text-[11px] font-bold text-amber-700">
-                      (Needs correction)
-                    </span>
-                  )}
-                </label>
-                <div className="relative mt-1.5">
-                  <Briefcase className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <select
-                    id="job-title"
-                    required
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    className={`w-full rounded-xl border py-2.5 pl-10 pr-3.5 text-sm text-slate-900 outline-none transition focus:ring-2 ${fieldRing(
-                      isFlagged("job_title"),
-                      isJobTitleDuplicate
-                    )}`}
-                  >
-                    <option value="">Select your Job Title...</option>
-                    {jobTitleOptions.map((titleOption) => (
-                      <option key={titleOption} value={titleOption}>
-                        {titleOption}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {isJobTitleDuplicate && (
-                  <p className="mt-1 text-xs font-semibold text-red-700">
-                    {invalidDuplicateMsg}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Required Teaching Classes Selection (Non-Student Roles Only) */}
-            {requestedRole && !isStudentRole && (
-              <div>
-                <p className="block text-sm font-semibold text-slate-700">
-                  Do you have a class to teach?{" "}
-                  <span className="text-red-600">*</span>
-                  {isFlagged("is_teaching") && (
-                    <span className="ml-1.5 text-[11px] font-bold text-amber-700">
-                      (Needs correction)
-                    </span>
-                  )}
-                </p>
-                <div
-                  role="radiogroup"
-                  aria-label="Do you have a class to teach?"
-                  className="mt-1.5 grid grid-cols-2 gap-3"
-                >
-                  {[
-                    { value: "yes", label: "Yes" },
-                    { value: "no", label: "No" },
-                  ].map((opt) => {
-                    const selected = isTeaching === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => setIsTeaching(opt.value)}
-                        className={`flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition ${
-                          selected
-                            ? "border-chmsu-forest bg-chmsu-forest text-white shadow-xs"
-                            : isTeachingDuplicate
-                              ? "border-red-400 bg-red-50/40 text-slate-700 hover:border-red-500"
-                              : isFlagged("is_teaching")
-                                ? "border-amber-400 bg-amber-50/40 text-slate-700 hover:border-amber-600"
-                                : "border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green hover:bg-chmsu-canvas"
-                        }`}
-                      >
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full border ${
-                            selected
-                              ? "border-white bg-chmsu-gold"
-                              : "border-slate-400 bg-white"
-                          }`}
-                        />
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {isTeachingDuplicate ? (
-                  <p className="mt-1 text-xs font-semibold text-red-700">
-                    {invalidDuplicateMsg}
-                  </p>
-                ) : (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Select Yes if you teach students to enable Live Availability
-                    Control on the Campus Kiosk and Instructor Locator.
                   </p>
                 )}
               </div>

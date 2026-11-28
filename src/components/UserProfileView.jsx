@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
-  Briefcase,
   Building2,
   Calendar,
   Camera,
@@ -586,12 +585,11 @@ export default function UserProfileView({
               </dd>
             </div>
 
-            {((!isAdmin && profile.role !== ROLES.RMO) ||
-              profile.department) && (
+            {(!isAdmin || profile.department) && (
               <div className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-4 py-3">
                 <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <Building2 className="h-3.5 w-3.5 text-chmsu-green" />
-                  College / Department
+                  {isStudent ? "College / Department" : "Office Category"}
                 </dt>
                 <dd className="mt-1 text-sm font-semibold text-slate-900">
                   {profile.department || "—"}
@@ -612,37 +610,15 @@ export default function UserProfileView({
             )}
 
             {!isStudent && !isAdmin && (
-              <>
-                <div className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-4 py-3">
-                  <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <MapPin className="h-3.5 w-3.5 text-chmsu-green" />
-                    Office
-                  </dt>
-                  <dd className="mt-1 text-sm font-semibold text-slate-900">
-                    {profile.office_location || "—"}
-                  </dd>
-                </div>
-
-                <div className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-4 py-3">
-                  <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <Briefcase className="h-3.5 w-3.5 text-chmsu-green" />
-                    Job Title
-                  </dt>
-                  <dd className="mt-1 text-sm font-semibold text-slate-900">
-                    {profile.job_title || "—"}
-                  </dd>
-                </div>
-
-                <div className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-4 py-3">
-                  <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                    <GraduationCap className="h-3.5 w-3.5 text-chmsu-green" />
-                    Teaches Classes
-                  </dt>
-                  <dd className="mt-1 text-sm font-semibold text-slate-900">
-                    {profile.is_teaching ? "Yes" : "No"}
-                  </dd>
-                </div>
-              </>
+              <div className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-4 py-3">
+                <dt className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <MapPin className="h-3.5 w-3.5 text-chmsu-green" />
+                  Office
+                </dt>
+                <dd className="mt-1 text-sm font-semibold text-slate-900">
+                  {profile.office_location || "—"}
+                </dd>
+              </div>
             )}
 
             <div className="rounded-xl border border-chmsu-border bg-chmsu-canvas px-4 py-3">

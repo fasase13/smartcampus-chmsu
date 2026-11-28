@@ -9,7 +9,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, ROLES } from "@/lib/constants";
 import PrivacyTermsGate from "@/components/PrivacyTermsGate";
 import PortalSidebar, {
   SidebarToggleButton,
@@ -94,9 +94,10 @@ export default function RmoPortalClient({
     },
     {
       id: "announcements",
-      label: Boolean(profile?.is_teaching)
-        ? "Announcements & Availability"
-        : "Manage Announcements",
+      label:
+        profile?.role === ROLES.FACULTY
+          ? "Announcements & Availability"
+          : "Manage Announcements",
       icon: Megaphone,
     },
   ];

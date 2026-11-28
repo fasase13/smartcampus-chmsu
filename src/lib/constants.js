@@ -303,3 +303,54 @@ export const STORAGE_BUCKETS = {
   DOCUMENT_FILES: "document-files",
   ID_VERIFICATIONS: "id-verifications",
 };
+
+/**
+ * Computes the normalized account status for Platform Users, Campus Users,
+ * Dashboard KPIs, and UserDetailsModal so newly registering users show as
+ * "Pending" rather than "Deactivated".
+ */
+export function getUserAccountStatus(user) {
+  if (!user) {
+    return {
+      key: "pending",
+      label: "Pending",
+      badgeClass: "border border-amber-200 bg-amber-50 text-amber-700",
+    };
+  }
+
+  if (user.is_active === true) {
+    return {
+      key: "active",
+      label: "Active",
+      badgeClass: "bg-emerald-100 text-emerald-800",
+    };
+  }
+
+  const regStatus = String(
+    user.approval_status ?? user.registration_status ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  if (regStatus === "rejected") {
+    return {
+      key: "rejected",
+      label: "Rejected",
+      badgeClass: "border border-rose-200 bg-rose-50 text-rose-700",
+    };
+  }
+
+  if (regStatus === "approved") {
+    return {
+      key: "deactivated",
+      label: "Deactivated",
+      badgeClass: "bg-red-100 text-red-800",
+    };
+  }
+
+  return {
+    key: "pending",
+    label: "Pending",
+    badgeClass: "border border-amber-200 bg-amber-50 text-amber-700",
+  };
+}

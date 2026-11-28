@@ -53,6 +53,7 @@ import {
   AVAILABILITY_STATUSES,
   CROSS_CAMPUS_ROLES,
   ROLE_LABELS,
+  ROLES,
   getAvailabilityMeta,
   normalizeAnnouncementCategory,
 } from "@/lib/constants";
@@ -109,7 +110,7 @@ export default function FacultyPortalClient({
 }) {
   const router = useRouter();
   const canPublishUniversityWide = CROSS_CAMPUS_ROLES.includes(profile.role);
-  const isTeaching = Boolean(profile?.is_teaching);
+  const isTeaching = profile?.role === ROLES.FACULTY;
   const roleLabel = ROLE_LABELS[profile?.role] ?? profile?.role ?? "Faculty";
 
   // Unified client-side tab state & sidebar collapse state

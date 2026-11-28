@@ -54,6 +54,7 @@ import {
   ANNOUNCEMENT_PRIORITIES,
   ROLE_LABELS,
   ROLES,
+  getUserAccountStatus,
   normalizeAnnouncementCategory,
 } from "@/lib/constants";
 
@@ -155,9 +156,9 @@ export default function SuperadminPortalClient({
 
   const normalizedInitialTab =
     initialTab === "overview" ||
-    initialTab === "analytics" ||
-    initialTab === "alerts" ||
-    initialTab === "documents"
+      initialTab === "analytics" ||
+      initialTab === "alerts" ||
+      initialTab === "documents"
       ? "dashboard"
       : initialTab || "dashboard";
   const [activeTab, setActiveTab] = useState(normalizedInitialTab);
@@ -326,7 +327,9 @@ export default function SuperadminPortalClient({
       const pendingCount = campusUsers.filter(
         (u) => u.approval_status === "pending" && u.profile_completed === true
       ).length;
-      const inactiveCount = campusUsers.filter((u) => !u.is_active).length;
+      const inactiveCount = campusUsers.filter(
+        (u) => getUserAccountStatus(u).key === "deactivated"
+      ).length;
       const announcementCount = announcements.filter(
         (a) =>
           a.is_active !== false && (a.campus_id === c.id || a.campus_id === null)
@@ -376,7 +379,7 @@ export default function SuperadminPortalClient({
       (u) => u.approval_status === "pending" && u.profile_completed === true
     ).length;
     const inactiveAccounts = scopedDashboardUsers.filter(
-      (u) => !u.is_active
+      (u) => getUserAccountStatus(u).key === "deactivated"
     ).length;
     const activeAnnouncements = scopedDashboardAnnouncements.length;
 
@@ -402,7 +405,7 @@ export default function SuperadminPortalClient({
         CAMPUS_DONUT_FALLBACK_COLORS[idx % CAMPUS_DONUT_FALLBACK_COLORS.length];
       const label =
         row.campus.is_main &&
-        !String(row.campus.name ?? "").toLowerCase().includes("main")
+          !String(row.campus.name ?? "").toLowerCase().includes("main")
           ? `${row.campus.name} (Main)`
           : row.campus.name;
       const pct = total > 0 ? Math.round((row.totalUsers / total) * 100) : 0;
@@ -436,8 +439,8 @@ export default function SuperadminPortalClient({
     () =>
       activeDonutCampusId
         ? campusDonutData.segments.find(
-            (seg) => seg.campusId === activeDonutCampusId
-          ) ?? null
+          (seg) => seg.campusId === activeDonutCampusId
+        ) ?? null
         : null,
     [activeDonutCampusId, campusDonutData.segments]
   );
@@ -473,13 +476,14 @@ export default function SuperadminPortalClient({
         return false;
       }
       if (userRoleFilter !== "all" && u.role !== userRoleFilter) return false;
-      if (
-        userStatusFilter === "active" &&
-        !(u.is_active && u.approval_status === "approved")
-      ) {
+      const statusKey = getUserAccountStatus(u).key;
+      if (userStatusFilter === "active" && statusKey !== "active") {
         return false;
       }
-      if (userStatusFilter === "inactive" && u.is_active) {
+      if (userStatusFilter === "pending" && statusKey !== "pending") {
+        return false;
+      }
+      if (userStatusFilter === "inactive" && statusKey !== "deactivated") {
         return false;
       }
       if (!q) return true;
@@ -1016,10 +1020,10 @@ export default function SuperadminPortalClient({
             <div
               role="status"
               className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${feedback.type === "error"
-                  ? "border-red-200 bg-red-50 text-red-800"
-                  : feedback.type === "warning"
-                    ? "border-amber-200 bg-amber-50 text-amber-900"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : feedback.type === "warning"
+                  ? "border-amber-200 bg-amber-50 text-amber-900"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-900"
                 }`}
             >
               <span>{feedback.message}</span>
@@ -1322,11 +1326,10 @@ export default function SuperadminPortalClient({
                             onMouseLeave={() => setHoveredCampusId(null)}
                             onFocus={() => setHoveredCampusId(seg.campusId)}
                             onBlur={() => setHoveredCampusId(null)}
-                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition ${
-                              isSelected
+                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition ${isSelected
                                 ? "border-chmsu-forest/30 bg-chmsu-canvas font-semibold"
                                 : "border-transparent hover:bg-slate-50"
-                            } ${isDimmed ? "opacity-50" : "opacity-100"}`}
+                              } ${isDimmed ? "opacity-50" : "opacity-100"}`}
                           >
                             <span className="flex min-w-0 items-center gap-1.5">
                               <span
@@ -1361,8 +1364,8 @@ export default function SuperadminPortalClient({
                       const sharePct =
                         scopedDashboardUsers.length > 0
                           ? Math.round(
-                              (entry.count / scopedDashboardUsers.length) * 100
-                            )
+                            (entry.count / scopedDashboardUsers.length) * 100
+                          )
                           : 0;
                       return (
                         <button
@@ -1432,11 +1435,10 @@ export default function SuperadminPortalClient({
                               onClick={() =>
                                 toggleDashboardCampusFilter(item.campus.id)
                               }
-                              className={`cursor-pointer rounded-md border px-2.5 py-1 text-[11px] font-semibold transition ${
-                                isSelectedCampus
+                              className={`cursor-pointer rounded-md border px-2.5 py-1 text-[11px] font-semibold transition ${isSelectedCampus
                                   ? "border-chmsu-forest bg-chmsu-forest text-white hover:bg-chmsu-green"
                                   : "border-chmsu-border bg-chmsu-canvas text-slate-700 hover:border-chmsu-green hover:bg-white hover:text-chmsu-forest"
-                              }`}
+                                }`}
                             >
                               {isSelectedCampus ? "Selected" : "Filter Campus"}
                             </button>
@@ -1554,7 +1556,10 @@ export default function SuperadminPortalClient({
                 >
                   <option value="all">All Statuses</option>
                   <option value="active">Active Accounts</option>
-                  <option value="inactive">Inactive Accounts</option>
+                  <option value="pending">Pending Accounts</option>
+                  <option value="inactive">
+                    Inactive / Deactivated Accounts
+                  </option>
                 </select>
               </div>
 
@@ -1571,59 +1576,64 @@ export default function SuperadminPortalClient({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-chmsu-border">
-                      {filteredUsers.map((u) => (
-                        <tr
-                          key={u.id}
-                          className={!u.is_active ? "bg-slate-50 opacity-65" : ""}
-                        >
-                          <td className="px-5 py-3">
-                            <p className="font-semibold text-slate-900">
-                              {u.full_name}{" "}
-                              {u.id === profile.id && (
-                                <span className="rounded bg-chmsu-gold/40 px-1.5 py-0.5 text-[10px] font-bold text-chmsu-forest">
-                                  You
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {u.employee_or_student_id ? (
-                                <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
-                                  ID {u.employee_or_student_id}
-                                </span>
-                              ) : null}
-                              {u.email}
-                              {u.department ? ` • ${u.department}` : ""}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-left">
-                            <span className="text-xs font-semibold text-slate-700">
-                              {ROLE_LABELS[u.role] ?? u.role}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs font-medium text-slate-700">
-                            {campusMap[u.campus_id]?.name ?? "Unassigned"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${u.is_active
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-red-100 text-red-800"
-                                }`}
-                            >
-                              {u.is_active ? "Active" : "Deactivated"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-left">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedUser(u)}
-                              className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green"
-                            >
-                              View Details
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredUsers.map((u) => {
+                        const accountStatus = getUserAccountStatus(u);
+                        return (
+                          <tr
+                            key={u.id}
+                            className={
+                              accountStatus.key === "deactivated" ||
+                                accountStatus.key === "rejected"
+                                ? "bg-slate-50 opacity-65"
+                                : ""
+                            }
+                          >
+                            <td className="px-5 py-3">
+                              <p className="font-semibold text-slate-900">
+                                {u.full_name}{" "}
+                                {u.id === profile.id && (
+                                  <span className="rounded bg-chmsu-gold/40 px-1.5 py-0.5 text-[10px] font-bold text-chmsu-forest">
+                                    You
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {u.employee_or_student_id ? (
+                                  <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
+                                    ID {u.employee_or_student_id}
+                                  </span>
+                                ) : null}
+                                {u.email}
+                                {u.department ? ` • ${u.department}` : ""}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3 text-left">
+                              <span className="text-xs font-semibold text-slate-700">
+                                {ROLE_LABELS[u.role] ?? u.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-xs font-medium text-slate-700">
+                              {campusMap[u.campus_id]?.name ?? "Unassigned"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${accountStatus.badgeClass}`}
+                              >
+                                {accountStatus.label}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedUser(u)}
+                                className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest hover:border-chmsu-green"
+                              >
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1711,11 +1721,9 @@ export default function SuperadminPortalClient({
                               CHMSU{" "}
                               {campusMap[u.campus_id]?.name ?? "Unassigned"}
                             </td>
-                            <td className="px-4 py-3.5">
-                              <span className="rounded-md bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
-                                {ROLE_LABELS[u.requested_role ?? "student"] ??
-                                  "Student"}
-                              </span>
+                            <td className="px-4 py-3.5 text-left text-sm font-medium text-slate-700">
+                              {ROLE_LABELS[u.requested_role ?? "student"] ??
+                                "Student"}
                             </td>
                             <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">
                               {formatDateTime(u.created_at)}
@@ -1773,220 +1781,220 @@ export default function SuperadminPortalClient({
               </div>
 
               {isComposerOpen && (
-              <form
-                onSubmit={handleSaveAnnouncement}
-                className="space-y-4 rounded-2xl border border-chmsu-border bg-white p-5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-bold text-chmsu-forest">
-                    {announcementForm.id
-                      ? "Edit Announcement"
-                      : "Publish New Announcement"}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={resetAnnouncementComposer}
-                    aria-label="Close announcement composer"
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-chmsu-border px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Cancel
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Target Scope
-                    </label>
-                    <select
-                      value={announcementForm.campus_id}
-                      onChange={(e) =>
-                        setAnnouncementForm({
-                          ...announcementForm,
-                          campus_id: e.target.value,
-                        })
-                      }
-                      className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                    >
-                      <option value="university">
-                        University-Wide (All 4 Campuses)
-                      </option>
-                      {campuses.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          CHMSU {c.name} Only
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Category
-                    </label>
-                    <select
-                      value={announcementForm.category}
-                      onChange={(e) =>
-                        setAnnouncementForm({
-                          ...announcementForm,
-                          category: e.target.value,
-                        })
-                      }
-                      className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                    >
-                      {ANNOUNCEMENT_CATEGORIES.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Priority
-                    </label>
-                    <select
-                      value={announcementForm.priority}
-                      onChange={(e) =>
-                        setAnnouncementForm({
-                          ...announcementForm,
-                          priority: e.target.value,
-                        })
-                      }
-                      className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                    >
-                      {ANNOUNCEMENT_PRIORITIES.map((p) => (
-                        <option key={p.value} value={p.value}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    minLength={3}
-                    value={announcementForm.title}
-                    onChange={(e) =>
-                      setAnnouncementForm({
-                        ...announcementForm,
-                        title: e.target.value,
-                      })
-                    }
-                    placeholder="Announcement headline..."
-                    className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Message
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    minLength={3}
-                    value={announcementForm.body}
-                    onChange={(e) =>
-                      setAnnouncementForm({
-                        ...announcementForm,
-                        body: e.target.value,
-                      })
-                    }
-                    placeholder="Write the official university or campus notice..."
-                    className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
-                  />
-                </div>
-
-                <AnnouncementAttachmentPicker
-                  inputId="superadmin_ann_attachment"
-                  file={announcementAttachmentFile}
-                  existingAttachment={existingAnnouncementAttachment}
-                  disabled={savingAnnouncement}
-                  onFileSelect={(picked) => {
-                    if (existingAnnouncementAttachment?.attachment_path) {
-                      setRemovedAnnouncementAttachmentPath(
-                        existingAnnouncementAttachment.attachment_path
-                      );
-                    }
-                    setAnnouncementAttachmentFile(picked);
-                  }}
-                  onClear={() => {
-                    if (existingAnnouncementAttachment?.attachment_path) {
-                      setRemovedAnnouncementAttachmentPath(
-                        existingAnnouncementAttachment.attachment_path
-                      );
-                    }
-                    setAnnouncementAttachmentFile(null);
-                    setExistingAnnouncementAttachment(null);
-                  }}
-                />
-
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-4 text-xs font-semibold text-slate-700">
-                    <label className="inline-flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={announcementForm.is_public}
-                        onChange={(e) =>
-                          setAnnouncementForm({
-                            ...announcementForm,
-                            is_public: e.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 accent-chmsu-green"
-                      />
-                      Visible on Public Kiosks
-                    </label>
-                    <label className="inline-flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={announcementForm.is_pinned}
-                        onChange={(e) =>
-                          setAnnouncementForm({
-                            ...announcementForm,
-                            is_pinned: e.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 accent-chmsu-green"
-                      />
-                      Pin to Top
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-2">
+                <form
+                  onSubmit={handleSaveAnnouncement}
+                  className="space-y-4 rounded-2xl border border-chmsu-border bg-white p-5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-bold text-chmsu-forest">
+                      {announcementForm.id
+                        ? "Edit Announcement"
+                        : "Publish New Announcement"}
+                    </h2>
                     <button
                       type="button"
                       onClick={resetAnnouncementComposer}
-                      disabled={savingAnnouncement}
-                      className="cursor-pointer rounded-lg border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                      aria-label="Close announcement composer"
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-chmsu-border px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
                     >
+                      <X className="h-3.5 w-3.5" />
                       Cancel
                     </button>
-                    <button
-                      type="submit"
-                      disabled={savingAnnouncement}
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#143D29] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0f2e1f] disabled:opacity-60"
-                    >
-                      {savingAnnouncement ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="h-3.5 w-3.5" />
-                      )}
-                      {announcementForm.id
-                        ? "Save Announcement"
-                        : "Publish Announcement"}
-                    </button>
                   </div>
-                </div>
-              </form>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Target Scope
+                      </label>
+                      <select
+                        value={announcementForm.campus_id}
+                        onChange={(e) =>
+                          setAnnouncementForm({
+                            ...announcementForm,
+                            campus_id: e.target.value,
+                          })
+                        }
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="university">
+                          University-Wide (All 4 Campuses)
+                        </option>
+                        {campuses.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            CHMSU {c.name} Only
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Category
+                      </label>
+                      <select
+                        value={announcementForm.category}
+                        onChange={(e) =>
+                          setAnnouncementForm({
+                            ...announcementForm,
+                            category: e.target.value,
+                          })
+                        }
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
+                      >
+                        {ANNOUNCEMENT_CATEGORIES.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Priority
+                      </label>
+                      <select
+                        value={announcementForm.priority}
+                        onChange={(e) =>
+                          setAnnouncementForm({
+                            ...announcementForm,
+                            priority: e.target.value,
+                          })
+                        }
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
+                      >
+                        {ANNOUNCEMENT_PRIORITIES.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      minLength={3}
+                      value={announcementForm.title}
+                      onChange={(e) =>
+                        setAnnouncementForm({
+                          ...announcementForm,
+                          title: e.target.value,
+                        })
+                      }
+                      placeholder="Announcement headline..."
+                      className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Message
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      minLength={3}
+                      value={announcementForm.body}
+                      onChange={(e) =>
+                        setAnnouncementForm({
+                          ...announcementForm,
+                          body: e.target.value,
+                        })
+                      }
+                      placeholder="Write the official university or campus notice..."
+                      className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
+                    />
+                  </div>
+
+                  <AnnouncementAttachmentPicker
+                    inputId="superadmin_ann_attachment"
+                    file={announcementAttachmentFile}
+                    existingAttachment={existingAnnouncementAttachment}
+                    disabled={savingAnnouncement}
+                    onFileSelect={(picked) => {
+                      if (existingAnnouncementAttachment?.attachment_path) {
+                        setRemovedAnnouncementAttachmentPath(
+                          existingAnnouncementAttachment.attachment_path
+                        );
+                      }
+                      setAnnouncementAttachmentFile(picked);
+                    }}
+                    onClear={() => {
+                      if (existingAnnouncementAttachment?.attachment_path) {
+                        setRemovedAnnouncementAttachmentPath(
+                          existingAnnouncementAttachment.attachment_path
+                        );
+                      }
+                      setAnnouncementAttachmentFile(null);
+                      setExistingAnnouncementAttachment(null);
+                    }}
+                  />
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-4 text-xs font-semibold text-slate-700">
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={announcementForm.is_public}
+                          onChange={(e) =>
+                            setAnnouncementForm({
+                              ...announcementForm,
+                              is_public: e.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 accent-chmsu-green"
+                        />
+                        Visible on Public Kiosks
+                      </label>
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={announcementForm.is_pinned}
+                          onChange={(e) =>
+                            setAnnouncementForm({
+                              ...announcementForm,
+                              is_pinned: e.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 accent-chmsu-green"
+                        />
+                        Pin to Top
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={resetAnnouncementComposer}
+                        disabled={savingAnnouncement}
+                        className="cursor-pointer rounded-lg border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingAnnouncement}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#143D29] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0f2e1f] disabled:opacity-60"
+                      >
+                        {savingAnnouncement ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="h-3.5 w-3.5" />
+                        )}
+                        {announcementForm.id
+                          ? "Save Announcement"
+                          : "Publish Announcement"}
+                      </button>
+                    </div>
+                  </div>
+                </form>
               )}
 
               <div className="flex items-center justify-between gap-3">
@@ -2089,12 +2097,12 @@ export default function SuperadminPortalClient({
                               setExistingAnnouncementAttachment(
                                 item.attachment_url
                                   ? {
-                                      attachment_url: item.attachment_url,
-                                      attachment_path: item.attachment_path,
-                                      attachment_name: item.attachment_name,
-                                      attachment_type: item.attachment_type,
-                                      attachment_size: item.attachment_size,
-                                    }
+                                    attachment_url: item.attachment_url,
+                                    attachment_path: item.attachment_path,
+                                    attachment_name: item.attachment_name,
+                                    attachment_type: item.attachment_type,
+                                    attachment_size: item.attachment_size,
+                                  }
                                   : null
                               );
                               setRemovedAnnouncementAttachmentPath(null);
@@ -2142,8 +2150,8 @@ export default function SuperadminPortalClient({
                   <div className="flex items-center gap-3">
                     <div
                       className={`flex h-12 w-12 items-center justify-center rounded-2xl ${settings?.maintenance_mode
-                          ? "bg-red-100 text-red-700"
-                          : "bg-emerald-100 text-emerald-700"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-emerald-100 text-emerald-700"
                         }`}
                     >
                       <Wrench className="h-6 w-6" />
@@ -2154,8 +2162,8 @@ export default function SuperadminPortalClient({
                       </p>
                       <p
                         className={`text-lg font-bold ${settings?.maintenance_mode
-                            ? "text-red-700"
-                            : "text-emerald-700"
+                          ? "text-red-700"
+                          : "text-emerald-700"
                           }`}
                       >
                         {settings?.maintenance_mode
@@ -2285,19 +2293,17 @@ export default function SuperadminPortalClient({
                 <button
                   type="button"
                   onClick={() => setAuditSubTab("system")}
-                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${
-                    auditSubTab === "system"
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${auditSubTab === "system"
                       ? "bg-chmsu-forest text-white shadow-xs"
                       : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green hover:text-chmsu-forest"
-                  }`}
+                    }`}
                 >
                   <span>System Logs</span>
                   <span
-                    className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
-                      auditSubTab === "system"
+                    className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${auditSubTab === "system"
                         ? "bg-white/20 text-white"
                         : "bg-slate-100 text-slate-600"
-                    }`}
+                      }`}
                   >
                     {systemAuditCount}
                   </span>
@@ -2306,19 +2312,17 @@ export default function SuperadminPortalClient({
                 <button
                   type="button"
                   onClick={() => setAuditSubTab("document")}
-                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${
-                    auditSubTab === "document"
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition ${auditSubTab === "document"
                       ? "bg-chmsu-forest text-white shadow-xs"
                       : "border border-chmsu-border bg-white text-slate-700 hover:border-chmsu-green hover:text-chmsu-forest"
-                  }`}
+                    }`}
                 >
                   <span>Document Logs</span>
                   <span
-                    className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
-                      auditSubTab === "document"
+                    className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${auditSubTab === "document"
                         ? "bg-white/20 text-white"
                         : "bg-slate-100 text-slate-600"
-                    }`}
+                      }`}
                   >
                     {documentAuditCount}
                   </span>
@@ -2364,11 +2368,10 @@ export default function SuperadminPortalClient({
                 ) : (
                   <div className="overflow-x-auto">
                     <table
-                      className={`w-full border-collapse text-left text-sm ${
-                        auditSubTab === "document"
+                      className={`w-full border-collapse text-left text-sm ${auditSubTab === "document"
                           ? "min-w-[680px]"
                           : "min-w-[760px]"
-                      }`}
+                        }`}
                     >
                       <thead>
                         <tr className="border-b border-chmsu-border bg-chmsu-canvas text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -2458,6 +2461,18 @@ export default function SuperadminPortalClient({
           }
           togglingStatus={togglingUserStatus}
           onToggleActive={handleToggleUserActive}
+          onReviewPending={
+            selectedUser.approval_status === "pending" &&
+              selectedUser.profile_completed
+              ? () => {
+                const target = selectedUser;
+                setSelectedUser(null);
+                setActiveTab("registrations");
+                setReviewUser(target);
+              }
+              : undefined
+          }
+          reviewPendingLabel="Review in Pending Registrations"
           onClose={() => setSelectedUser(null)}
         />
       )}

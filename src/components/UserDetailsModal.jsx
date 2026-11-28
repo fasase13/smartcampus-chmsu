@@ -10,7 +10,12 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { ROLE_LABELS, ROLES, STORAGE_BUCKETS } from "@/lib/constants";
+import {
+  ROLE_LABELS,
+  ROLES,
+  STORAGE_BUCKETS,
+  getUserAccountStatus,
+} from "@/lib/constants";
 
 function getInitials(fullName, email) {
   const name = String(fullName ?? "").trim();
@@ -31,6 +36,8 @@ export default function UserDetailsModal({
   cannotDeactivateReason = "",
   togglingStatus = false,
   onToggleActive,
+  onReviewPending,
+  reviewPendingLabel = "Review in Pending Registrations",
   onClose,
 }) {
   const [avatarFailed, setAvatarFailed] = useState(false);
@@ -101,6 +108,7 @@ export default function UserDetailsModal({
   const initials = getInitials(user.full_name, user.email);
   const showAvatarImg = Boolean(user.avatar_url) && !avatarFailed;
   const roleLabel = ROLE_LABELS[user.role] ?? user.role;
+  const accountStatus = getUserAccountStatus(user);
 
   return (
     <>
@@ -158,13 +166,9 @@ export default function UserDetailsModal({
                     {roleLabel}
                   </span>
                   <span
-                    className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${
-                      user.is_active
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
+                    className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${accountStatus.badgeClass}`}
                   >
-                    {user.is_active ? "Active" : "Deactivated"}
+                    {accountStatus.label}
                   </span>
                   {user.employee_or_student_id && (
                     <span className="rounded-md border border-chmsu-border bg-white px-2 py-0.5 font-mono text-xs font-bold tracking-wider text-chmsu-forest">
@@ -224,16 +228,16 @@ export default function UserDetailsModal({
                 </span>
               </div>
 
-              {(user.role !== ROLES.RMO || user.department) && (
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    College / Department
-                  </span>
-                  <span className="text-right text-xs font-medium text-slate-800">
-                    {user.department || "—"}
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <span className="text-xs font-semibold text-slate-500">
+                  {user.role === ROLES.STUDENT
+                    ? "College / Department"
+                    : "Office Category"}
+                </span>
+                <span className="text-right text-xs font-medium text-slate-800">
+                  {user.department || "—"}
+                </span>
+              </div>
 
               {user.role === ROLES.STUDENT || user.program_or_course ? (
                 <div className="flex items-center justify-between gap-3 px-4 py-2.5">
@@ -255,39 +259,14 @@ export default function UserDetailsModal({
                 </div>
               )}
 
-              {user.role !== ROLES.STUDENT && (
-                <>
-                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Job Title
-                    </span>
-                    <span className="text-right text-xs font-medium text-slate-800">
-                      {user.job_title || "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                    <span className="text-xs font-semibold text-slate-500">
-                      Teaches Classes
-                    </span>
-                    <span className="text-right text-xs font-semibold text-slate-800">
-                      {user.is_teaching ? "Yes" : "No"}
-                    </span>
-                  </div>
-                </>
-              )}
-
               <div className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <span className="text-xs font-semibold text-slate-500">
                   Status
                 </span>
                 <span
-                  className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${
-                    user.is_active
-                      ? "bg-emerald-100 text-emerald-800"
-                      : "bg-red-100 text-red-800"
-                  }`}
+                  className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${accountStatus.badgeClass}`}
                 >
-                  {user.is_active ? "Active" : "Deactivated"}
+                  {accountStatus.label}
                 </span>
               </div>
             </div>
@@ -393,7 +372,25 @@ export default function UserDetailsModal({
               Close
             </button>
 
-            {cannotDeactivateReason ? (
+            {accountStatus.key === "pending" ? (
+              onReviewPending ? (
+                <button
+                  type="button"
+                  onClick={onReviewPending}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-amber-700"
+                >
+                  {reviewPendingLabel}
+                </button>
+              ) : (
+                <p className="text-xs font-medium text-amber-700">
+                  Registration is pending admin verification.
+                </p>
+              )
+            ) : accountStatus.key === "rejected" ? (
+              <p className="text-xs font-medium text-rose-700">
+                This registration was rejected.
+              </p>
+            ) : cannotDeactivateReason ? (
               <p className="text-xs font-medium text-amber-700">
                 {cannotDeactivateReason}
               </p>

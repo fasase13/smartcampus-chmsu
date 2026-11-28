@@ -92,9 +92,10 @@ export default function PortalShell({
     },
     {
       href: `/${campusSlug}/faculty`,
-      label: Boolean(profile?.is_teaching)
-        ? "Announcements & Availability"
-        : "Manage Announcements",
+      label:
+        profile?.role === ROLES.FACULTY
+          ? "Announcements & Availability"
+          : "Manage Announcements",
       icon: Megaphone,
       visible: [
         ROLES.FACULTY,

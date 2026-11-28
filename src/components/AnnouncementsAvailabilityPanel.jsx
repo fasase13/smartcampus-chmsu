@@ -25,6 +25,7 @@ import {
   ANNOUNCEMENT_PRIORITIES,
   AVAILABILITY_STATUSES,
   CROSS_CAMPUS_ROLES,
+  ROLES,
   getAvailabilityMeta,
   normalizeAnnouncementCategory,
 } from "@/lib/constants";
@@ -66,7 +67,7 @@ export default function AnnouncementsAvailabilityPanel({
   initialAnnouncements = [],
 }) {
   const canPublishUniversityWide = CROSS_CAMPUS_ROLES.includes(profile.role);
-  const isTeaching = Boolean(profile?.is_teaching);
+  const isTeaching = profile?.role === ROLES.FACULTY;
 
   // Live Availability state
   const [availabilityStatus, setAvailabilityStatus] = useState(

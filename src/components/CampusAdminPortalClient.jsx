@@ -50,6 +50,7 @@ import {
   ROLE_LABELS,
   ROLES,
   getCampusAdminTitle,
+  getUserAccountStatus,
   normalizeAnnouncementCategory,
 } from "@/lib/constants";
 
@@ -277,7 +278,9 @@ export default function CampusAdminPortalClient({
       (u) => u.is_active && u.approval_status === "approved"
     ).length;
     const pendingCount = pendingRegistrations.length;
-    const inactiveAccounts = users.filter((u) => !u.is_active).length;
+    const inactiveAccounts = users.filter(
+      (u) => getUserAccountStatus(u).key === "deactivated"
+    ).length;
     const activeAnnouncements = announcements.filter(
       (a) => a.is_active !== false
     ).length;
@@ -333,13 +336,14 @@ export default function CampusAdminPortalClient({
     const q = userSearch.trim().toLowerCase();
     return users.filter((u) => {
       if (userRoleFilter !== "all" && u.role !== userRoleFilter) return false;
-      if (
-        userStatusFilter === "active" &&
-        !(u.is_active && u.approval_status === "approved")
-      ) {
+      const statusKey = getUserAccountStatus(u).key;
+      if (userStatusFilter === "active" && statusKey !== "active") {
         return false;
       }
-      if (userStatusFilter === "inactive" && u.is_active) {
+      if (userStatusFilter === "pending" && statusKey !== "pending") {
+        return false;
+      }
+      if (userStatusFilter === "inactive" && statusKey !== "deactivated") {
         return false;
       }
       if (!q) return true;
@@ -732,10 +736,10 @@ export default function CampusAdminPortalClient({
             <div
               role="status"
               className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${feedback.type === "error"
-                  ? "border-red-200 bg-red-50 text-red-800"
-                  : feedback.type === "warning"
-                    ? "border-amber-200 bg-amber-50 text-amber-900"
-                    : "border-emerald-200 bg-emerald-50 text-emerald-900"
+                ? "border-red-200 bg-red-50 text-red-800"
+                : feedback.type === "warning"
+                  ? "border-amber-200 bg-amber-50 text-amber-900"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-900"
                 }`}
             >
               <span>{feedback.message}</span>
@@ -997,9 +1001,8 @@ export default function CampusAdminPortalClient({
                             onMouseLeave={() => setHoveredRole(null)}
                             onFocus={() => setHoveredRole(seg.role)}
                             onBlur={() => setHoveredRole(null)}
-                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border border-transparent px-2.5 py-1.5 text-left text-xs transition hover:bg-slate-50 ${
-                              isDimmed ? "opacity-50" : "opacity-100"
-                            }`}
+                            className={`flex cursor-pointer items-center justify-between gap-2 rounded-md border border-transparent px-2.5 py-1.5 text-left text-xs transition hover:bg-slate-50 ${isDimmed ? "opacity-50" : "opacity-100"
+                              }`}
                           >
                             <span className="flex min-w-0 items-center gap-1.5">
                               <span
@@ -1124,11 +1127,9 @@ export default function CampusAdminPortalClient({
                                     : ""}
                               </p>
                             </td>
-                            <td className="px-4 py-3.5">
-                              <span className="rounded-md bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
-                                {ROLE_LABELS[u.requested_role ?? "student"] ??
-                                  "Student"}
-                              </span>
+                            <td className="px-4 py-3.5 text-left text-sm font-medium text-slate-700">
+                              {ROLE_LABELS[u.requested_role ?? "student"] ??
+                                "Student"}
                             </td>
                             <td className="px-4 py-3.5 text-xs text-slate-500 tabular-nums">
                               {formatDateTime(u.created_at)}
@@ -1186,195 +1187,195 @@ export default function CampusAdminPortalClient({
               </div>
 
               {isComposerOpen && (
-              <form
-                onSubmit={handleSaveAnnouncement}
-                className="space-y-4 rounded-2xl border border-chmsu-border bg-white p-5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-sm font-bold text-chmsu-forest">
-                    {announcementForm.id
-                      ? "Edit Campus Announcement"
-                      : "Publish New Announcement"}
-                  </h2>
-                  <button
-                    type="button"
-                    onClick={resetAnnouncementComposer}
-                    aria-label="Close announcement composer"
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-chmsu-border px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Cancel
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Category
-                    </label>
-                    <select
-                      value={announcementForm.category}
-                      onChange={(e) =>
-                        setAnnouncementForm({
-                          ...announcementForm,
-                          category: e.target.value,
-                        })
-                      }
-                      className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                    >
-                      {ANNOUNCEMENT_CATEGORIES.map((c) => (
-                        <option key={c.value} value={c.value}>
-                          {c.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600">
-                      Priority
-                    </label>
-                    <select
-                      value={announcementForm.priority}
-                      onChange={(e) =>
-                        setAnnouncementForm({
-                          ...announcementForm,
-                          priority: e.target.value,
-                        })
-                      }
-                      className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
-                    >
-                      {ANNOUNCEMENT_PRIORITIES.map((p) => (
-                        <option key={p.value} value={p.value}>
-                          {p.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    minLength={3}
-                    value={announcementForm.title}
-                    onChange={(e) =>
-                      setAnnouncementForm({
-                        ...announcementForm,
-                        title: e.target.value,
-                      })
-                    }
-                    placeholder="Announcement title..."
-                    className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600">
-                    Message
-                  </label>
-                  <textarea
-                    rows={3}
-                    required
-                    minLength={3}
-                    value={announcementForm.body}
-                    onChange={(e) =>
-                      setAnnouncementForm({
-                        ...announcementForm,
-                        body: e.target.value,
-                      })
-                    }
-                    placeholder={`Write announcement for CHMSU ${campus.name}...`}
-                    className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
-                  />
-                </div>
-
-                <AnnouncementAttachmentPicker
-                  inputId="campus_admin_ann_attachment"
-                  file={announcementAttachmentFile}
-                  existingAttachment={existingAnnouncementAttachment}
-                  disabled={savingAnnouncement}
-                  onFileSelect={(picked) => {
-                    if (existingAnnouncementAttachment?.attachment_path) {
-                      setRemovedAnnouncementAttachmentPath(
-                        existingAnnouncementAttachment.attachment_path
-                      );
-                    }
-                    setAnnouncementAttachmentFile(picked);
-                  }}
-                  onClear={() => {
-                    if (existingAnnouncementAttachment?.attachment_path) {
-                      setRemovedAnnouncementAttachmentPath(
-                        existingAnnouncementAttachment.attachment_path
-                      );
-                    }
-                    setAnnouncementAttachmentFile(null);
-                    setExistingAnnouncementAttachment(null);
-                  }}
-                />
-
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap gap-4 text-xs font-semibold text-slate-700">
-                    <label className="inline-flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={announcementForm.is_public}
-                        onChange={(e) =>
-                          setAnnouncementForm({
-                            ...announcementForm,
-                            is_public: e.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 accent-chmsu-green"
-                      />
-                      Visible on Public Kiosk
-                    </label>
-                    <label className="inline-flex cursor-pointer items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={announcementForm.is_pinned}
-                        onChange={(e) =>
-                          setAnnouncementForm({
-                            ...announcementForm,
-                            is_pinned: e.target.checked,
-                          })
-                        }
-                        className="h-4 w-4 accent-chmsu-green"
-                      />
-                      Pin to Top
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-2">
+                <form
+                  onSubmit={handleSaveAnnouncement}
+                  className="space-y-4 rounded-2xl border border-chmsu-border bg-white p-5"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-sm font-bold text-chmsu-forest">
+                      {announcementForm.id
+                        ? "Edit Campus Announcement"
+                        : "Publish New Announcement"}
+                    </h2>
                     <button
                       type="button"
                       onClick={resetAnnouncementComposer}
-                      disabled={savingAnnouncement}
-                      className="cursor-pointer rounded-lg border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                      aria-label="Close announcement composer"
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-chmsu-border px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
                     >
+                      <X className="h-3.5 w-3.5" />
                       Cancel
                     </button>
-                    <button
-                      type="submit"
-                      disabled={savingAnnouncement}
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#143D29] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0f2e1f] disabled:opacity-60"
-                    >
-                      {savingAnnouncement ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Plus className="h-3.5 w-3.5" />
-                      )}
-                      {announcementForm.id
-                        ? "Save Changes"
-                        : "Publish Announcement"}
-                    </button>
                   </div>
-                </div>
-              </form>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Category
+                      </label>
+                      <select
+                        value={announcementForm.category}
+                        onChange={(e) =>
+                          setAnnouncementForm({
+                            ...announcementForm,
+                            category: e.target.value,
+                          })
+                        }
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
+                      >
+                        {ANNOUNCEMENT_CATEGORIES.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600">
+                        Priority
+                      </label>
+                      <select
+                        value={announcementForm.priority}
+                        onChange={(e) =>
+                          setAnnouncementForm({
+                            ...announcementForm,
+                            priority: e.target.value,
+                          })
+                        }
+                        className="mt-1 w-full rounded-xl border border-chmsu-border bg-white px-3 py-2 text-sm"
+                      >
+                        {ANNOUNCEMENT_PRIORITIES.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Title
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      minLength={3}
+                      value={announcementForm.title}
+                      onChange={(e) =>
+                        setAnnouncementForm({
+                          ...announcementForm,
+                          title: e.target.value,
+                        })
+                      }
+                      placeholder="Announcement title..."
+                      className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600">
+                      Message
+                    </label>
+                    <textarea
+                      rows={3}
+                      required
+                      minLength={3}
+                      value={announcementForm.body}
+                      onChange={(e) =>
+                        setAnnouncementForm({
+                          ...announcementForm,
+                          body: e.target.value,
+                        })
+                      }
+                      placeholder={`Write announcement for CHMSU ${campus.name}...`}
+                      className="mt-1 w-full rounded-xl border border-chmsu-border px-3.5 py-2 text-sm"
+                    />
+                  </div>
+
+                  <AnnouncementAttachmentPicker
+                    inputId="campus_admin_ann_attachment"
+                    file={announcementAttachmentFile}
+                    existingAttachment={existingAnnouncementAttachment}
+                    disabled={savingAnnouncement}
+                    onFileSelect={(picked) => {
+                      if (existingAnnouncementAttachment?.attachment_path) {
+                        setRemovedAnnouncementAttachmentPath(
+                          existingAnnouncementAttachment.attachment_path
+                        );
+                      }
+                      setAnnouncementAttachmentFile(picked);
+                    }}
+                    onClear={() => {
+                      if (existingAnnouncementAttachment?.attachment_path) {
+                        setRemovedAnnouncementAttachmentPath(
+                          existingAnnouncementAttachment.attachment_path
+                        );
+                      }
+                      setAnnouncementAttachmentFile(null);
+                      setExistingAnnouncementAttachment(null);
+                    }}
+                  />
+
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap gap-4 text-xs font-semibold text-slate-700">
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={announcementForm.is_public}
+                          onChange={(e) =>
+                            setAnnouncementForm({
+                              ...announcementForm,
+                              is_public: e.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 accent-chmsu-green"
+                        />
+                        Visible on Public Kiosk
+                      </label>
+                      <label className="inline-flex cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={announcementForm.is_pinned}
+                          onChange={(e) =>
+                            setAnnouncementForm({
+                              ...announcementForm,
+                              is_pinned: e.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 accent-chmsu-green"
+                        />
+                        Pin to Top
+                      </label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={resetAnnouncementComposer}
+                        disabled={savingAnnouncement}
+                        className="cursor-pointer rounded-lg border border-chmsu-border bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingAnnouncement}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#143D29] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#0f2e1f] disabled:opacity-60"
+                      >
+                        {savingAnnouncement ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Plus className="h-3.5 w-3.5" />
+                        )}
+                        {announcementForm.id
+                          ? "Save Changes"
+                          : "Publish Announcement"}
+                      </button>
+                    </div>
+                  </div>
+                </form>
               )}
 
               <div className="flex items-center justify-between gap-3">
@@ -1450,12 +1451,12 @@ export default function CampusAdminPortalClient({
                               setExistingAnnouncementAttachment(
                                 item.attachment_url
                                   ? {
-                                      attachment_url: item.attachment_url,
-                                      attachment_path: item.attachment_path,
-                                      attachment_name: item.attachment_name,
-                                      attachment_type: item.attachment_type,
-                                      attachment_size: item.attachment_size,
-                                    }
+                                    attachment_url: item.attachment_url,
+                                    attachment_path: item.attachment_path,
+                                    attachment_name: item.attachment_name,
+                                    attachment_type: item.attachment_type,
+                                    attachment_size: item.attachment_size,
+                                  }
                                   : null
                               );
                               setRemovedAnnouncementAttachmentPath(null);
@@ -1527,7 +1528,10 @@ export default function CampusAdminPortalClient({
                 >
                   <option value="all">All Statuses</option>
                   <option value="active">Active Accounts</option>
-                  <option value="inactive">Inactive Accounts</option>
+                  <option value="pending">Pending Accounts</option>
+                  <option value="inactive">
+                    Inactive / Deactivated Accounts
+                  </option>
                 </select>
               </div>
 
@@ -1543,51 +1547,56 @@ export default function CampusAdminPortalClient({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-chmsu-border">
-                      {directoryUsers.map((u) => (
-                        <tr
-                          key={u.id}
-                          className={!u.is_active ? "bg-slate-50 opacity-65" : ""}
-                        >
-                          <td className="px-5 py-3">
-                            <p className="font-semibold text-slate-900">
-                              {u.full_name}
-                            </p>
-                            <p className="text-xs text-slate-500">
-                              {u.employee_or_student_id ? (
-                                <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
-                                  ID {u.employee_or_student_id}
-                                </span>
-                              ) : null}
-                              {u.email}
-                              {u.department ? ` • ${u.department}` : ""}
-                            </p>
-                          </td>
-                          <td className="px-4 py-3 text-left">
-                            <span className="text-xs font-semibold text-slate-700">
-                              {ROLE_LABELS[u.role] ?? u.role}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${u.is_active
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-red-100 text-red-800"
-                                }`}
-                            >
-                              {u.is_active ? "Active" : "Deactivated"}
-                            </span>
-                          </td>
-                          <td className="px-5 py-3 text-left">
-                            <button
-                              type="button"
-                              onClick={() => setSelectedUser(u)}
-                              className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest transition hover:border-chmsu-green"
-                            >
-                              View Details
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {directoryUsers.map((u) => {
+                        const accountStatus = getUserAccountStatus(u);
+                        return (
+                          <tr
+                            key={u.id}
+                            className={
+                              accountStatus.key === "deactivated" ||
+                                accountStatus.key === "rejected"
+                                ? "bg-slate-50 opacity-65"
+                                : ""
+                            }
+                          >
+                            <td className="px-5 py-3">
+                              <p className="font-semibold text-slate-900">
+                                {u.full_name}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {u.employee_or_student_id ? (
+                                  <span className="mr-1.5 font-mono font-semibold text-chmsu-forest">
+                                    ID {u.employee_or_student_id}
+                                  </span>
+                                ) : null}
+                                {u.email}
+                                {u.department ? ` • ${u.department}` : ""}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3 text-left">
+                              <span className="text-xs font-semibold text-slate-700">
+                                {ROLE_LABELS[u.role] ?? u.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={`rounded-md px-2.5 py-0.5 text-xs font-semibold ${accountStatus.badgeClass}`}
+                              >
+                                {accountStatus.label}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3 text-left">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedUser(u)}
+                                className="whitespace-nowrap rounded-lg border border-chmsu-border bg-white px-3 py-1.5 text-xs font-semibold text-chmsu-forest transition hover:border-chmsu-green"
+                              >
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1740,13 +1749,25 @@ export default function CampusAdminPortalClient({
             selectedUser.id === profile.id
               ? "You cannot deactivate your own account."
               : [ROLES.SUPERADMIN, ROLES.CAMPUS_ADMIN].includes(
-                    selectedUser.role
-                  )
+                selectedUser.role
+              )
                 ? "Admin accounts cannot be deactivated here."
                 : ""
           }
           togglingStatus={togglingUserStatus}
           onToggleActive={handleToggleUserActive}
+          onReviewPending={
+            selectedUser.approval_status === "pending" &&
+              selectedUser.profile_completed
+              ? () => {
+                const target = selectedUser;
+                setSelectedUser(null);
+                setActiveTab("registrations");
+                setReviewUser(target);
+              }
+              : undefined
+          }
+          reviewPendingLabel="Review in Campus Registrations"
           onClose={() => setSelectedUser(null)}
         />
       )}
